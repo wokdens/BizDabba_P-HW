@@ -29,16 +29,16 @@ VSVersionInfo(
       [
       StringTable(
         u'040904B0',
-        [StringStruct(u'CompanyName', u'Wokdens'),
-        StringStruct(u'FileDescription', u'Business Management & Invoicing Application'),
+        [StringStruct(u'CompanyName', u'wokdens.com'),
+        StringStruct(u'FileDescription', u'BizDabba_Diwali - Wholesale & Retail Management'),
         StringStruct(u'FileVersion', u'1.0.0.0'),
-        StringStruct(u'InternalName', u'BusinessApp'),
+        StringStruct(u'InternalName', u'BizDabba_Diwali'),
         StringStruct(u'LegalCopyright', u'Copyright (C) 2026 Powered by wokdens.com. All rights reserved.'),
-        StringStruct(u'OriginalFilename', u'BusinessApp.exe'),
-        StringStruct(u'ProductName', u'BusinessApp - Electrical Wholesale & Retail'),
+        StringStruct(u'OriginalFilename', u'BizDabba_Diwali.exe'),
+        StringStruct(u'ProductName', u'BizDabba_Diwali by wokdens.com'),
         StringStruct(u'ProductVersion', u'1.0.0.0'),
-        StringStruct(u'CompanyShortName', u'Wokdens'),
-        StringStruct(u'ProductShortName', u'BusinessApp')])
+        StringStruct(u'CompanyShortName', u'wokdens.com'),
+        StringStruct(u'ProductShortName', u'BizDabba_Diwali')])
 
       ]
     ),

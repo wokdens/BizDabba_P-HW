@@ -1,15 +1,16 @@
-; Inno Setup Script for BizDabba
+; Inno Setup Script for BizDabba_Diwali
 ; Powered by wokdens.com
 
-#define MyAppName "BizDabba"
+#define MyAppName "BizDabba_Diwali"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "wokdens.com"
 #define MyAppURL "https://wokdens.com"
-#define MyAppExeName "BusinessApp.exe"
+#define MyAppExeName "BizDabba_Diwali.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
-AppId={{D9A3B657-4E2F-4A92-BF38-9B25A7C12F89}
+; Using a dedicated AppId guarantees side-by-side coexistence with any other software.
+AppId={{E58F4C3B-9A21-4F86-BD7E-6C18E27A9B44}
 AppName={#MyAppName} by wokdens.com
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -21,7 +22,7 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName} by wokdens.com
 DisableProgramGroupPage=yes
 OutputDir=..\dist_installer
-OutputBaseFilename=BizDabba_Setup_v1.0
+OutputBaseFilename=BizDabba_Diwali_Setup_v1.0
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -32,9 +33,9 @@ RestartApplications=no
 ; Version Info embedded into Setup.exe
 VersionInfoVersion=1.0.0.0
 VersionInfoCompany=wokdens.com
-VersionInfoDescription=BizDabba Installation Wizard
+VersionInfoDescription=BizDabba_Diwali Installation Wizard
 VersionInfoCopyright=Copyright (C) 2026 Powered by wokdens.com
-VersionInfoProductName=BizDabba by wokdens.com
+VersionInfoProductName=BizDabba_Diwali by wokdens.com
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -43,7 +44,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "..\dist\BusinessApp\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\BizDabba_Diwali\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\certificates\wokdens_codesign.cer"; DestDir: "{app}\certificates"; Flags: ignoreversion
 Source: "..\scripts\install_certificate.bat"; DestDir: "{app}"; DestName: "Register_Security_Certificate.bat"; Flags: ignoreversion
 

@@ -14,7 +14,7 @@ class MainWindow:
 
         self.root = root
 
-        self.root.title("BizDabba by wokdens.com")
+        self.root.title("BizDabba_Diwali by wokdens.com")
 
         self.root.geometry("1200x780")
         self.root.minsize(1024, 650)

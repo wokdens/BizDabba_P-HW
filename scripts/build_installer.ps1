@@ -35,14 +35,19 @@ if (-not $IsccPath) {
 }
 Write-Host "[1/4] Found Inno Setup Compiler: $IsccPath" -ForegroundColor Green
 
-# 2. Sign main BusinessApp.exe
-$MainExe = Join-Path $ProjectDir "dist\BusinessApp\BusinessApp.exe"
-if (-not (Test-Path $MainExe)) {
-    Write-Error "dist\BusinessApp\BusinessApp.exe not found! Please build PyInstaller package first."
+# 2. Sign main Executable
+$MainExeCandidates = @(
+    (Join-Path $ProjectDir "dist\BizDabba_Diwali\BizDabba_Diwali.exe"),
+    (Join-Path $ProjectDir "dist\BusinessApp\BusinessApp.exe")
+)
+$MainExe = $MainExeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $MainExe) {
+    Write-Error "Target executable not found! Please build PyInstaller package first."
     exit 1
 }
 
-Write-Host "[2/4] Signing BusinessApp.exe with Authenticode certificate..." -ForegroundColor Cyan
+Write-Host "[2/4] Signing $MainExe with Authenticode certificate..." -ForegroundColor Cyan
 & (Join-Path $ScriptDir "sign_app.ps1") -FilePath $MainExe
 
 # 3. Compile Inno Setup Installer
@@ -50,9 +55,14 @@ $IssFile = Join-Path $ProjectDir "installer\setup_script.iss"
 Write-Host "[3/4] Compiling Installer using Inno Setup..." -ForegroundColor Cyan
 & $IsccPath $IssFile
 
-$InstallerExe = Join-Path $ProjectDir "dist_installer\BizDabba_Setup_v1.0.exe"
-if (-not (Test-Path $InstallerExe)) {
-    Write-Error "Failed to generate installer executable at: $InstallerExe"
+$InstallerCandidates = @(
+    (Join-Path $ProjectDir "dist_installer\BizDabba_Diwali_Setup_v1.0.exe"),
+    (Join-Path $ProjectDir "dist_installer\BizDabba_Setup_v1.0.exe")
+)
+$InstallerExe = $InstallerCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $InstallerExe) {
+    Write-Error "Failed to generate installer executable!"
     exit 1
 }
 Write-Host "Installer compiled: $InstallerExe" -ForegroundColor Green
@@ -64,5 +74,5 @@ Write-Host "[4/4] Digitally Signing Installer Executable..." -ForegroundColor Cy
 Write-Host ""
 Write-Host "=======================================================" -ForegroundColor Green
 Write-Host "   BUILD & SIGNING COMPLETE!                           " -ForegroundColor Green
-Write-Host "   Installer: dist_installer\BizDabba_Setup_v1.0.exe   " -ForegroundColor Green
+Write-Host "   Installer: $InstallerExe   " -ForegroundColor Green
 Write-Host "=======================================================" -ForegroundColor Green
