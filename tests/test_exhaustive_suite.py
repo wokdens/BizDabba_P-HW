@@ -174,6 +174,21 @@ def run_exhaustive_suite():
             assert cat_count >= 20, f"Expected 20+ categories, got {cat_count}"
             print(f"  -> Successfully imported {prod_count} products across {cat_count} categories into UI.")
 
+            # Verify product IDs start from 1
+            all_rows = [inv_ui.tree.item(item_id, 'values') for item_id in inv_ui.tree.get_children()]
+            ids = [int(r[0]) for r in all_rows]
+            min_id = min(ids)
+            assert min_id == 1, f"Expected product IDs to start from 1, but min ID was {min_id}!"
+            print(f"  -> Verified product IDs start cleanly from ID 1 (min: {min_id}, max: {max(ids)}).")
+
+            # Test Renumbering functionality
+            with patch('ui.inventory_ui.request_admin_pin', return_value=True):
+                inv_ui.renumber_all_product_ids()
+            all_rows_after = [inv_ui.tree.item(item_id, 'values') for item_id in inv_ui.tree.get_children()]
+            ids_after = [int(r[0]) for r in all_rows_after]
+            assert min(ids_after) == 1 and max(ids_after) == len(ids_after), "Renumbering failed to produce clean 1..N sequence!"
+            print(f"  -> Renumber all product IDs verified OK (1 to {len(ids_after)}).")
+
             # Search in Inventory
             inv_ui.search_entry.delete(0, tk.END)
             inv_ui.search_entry.insert(0, "TIBCON")

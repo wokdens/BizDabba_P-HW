@@ -827,6 +827,55 @@ def update_stock(product_id, new_stock):
     conn.close()
 
 
+def renumber_products_sequential():
+    """
+    Renumbers all products sequentially starting from 1 to N.
+    Safely updates foreign key references in invoice_items and stock_adjustments.
+    Resets sqlite_sequence to N (or 0 if no products).
+    Returns (success: bool, count: int, message: str).
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM products ORDER BY id ASC")
+        rows = cursor.fetchall()
+        if not rows:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+            if cursor.fetchone():
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'products'")
+            conn.commit()
+            return True, 0, "Inventory is empty. Product ID sequence reset to 0."
+
+        # Re-assign IDs using negative temporary values to prevent PRIMARY KEY collisions
+        for idx, r in enumerate(rows):
+            old_id = r[0]
+            temp_id = -(idx + 1)
+            cursor.execute("UPDATE products SET id = ? WHERE id = ?", (temp_id, old_id))
+            cursor.execute("UPDATE invoice_items SET product_id = ? WHERE product_id = ?", (temp_id, old_id))
+            cursor.execute("UPDATE stock_adjustments SET product_id = ? WHERE product_id = ?", (temp_id, old_id))
+
+        # Assign clean 1..N IDs
+        for idx in range(len(rows)):
+            temp_id = -(idx + 1)
+            new_id = idx + 1
+            cursor.execute("UPDATE products SET id = ? WHERE id = ?", (new_id, temp_id))
+            cursor.execute("UPDATE invoice_items SET product_id = ? WHERE product_id = ?", (new_id, temp_id))
+            cursor.execute("UPDATE stock_adjustments SET product_id = ? WHERE product_id = ?", (new_id, temp_id))
+
+        # Synchronize sqlite_sequence
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+        if cursor.fetchone():
+            cursor.execute("UPDATE sqlite_sequence SET seq = ? WHERE name = 'products'", (len(rows),))
+
+        conn.commit()
+        return True, len(rows), f"Successfully renumbered {len(rows)} products sequentially (IDs 1 to {len(rows)})."
+    except Exception as e:
+        conn.rollback()
+        return False, 0, str(e)
+    finally:
+        conn.close()
+
+
 # =========================
 # CUSTOMER FUNCTIONS
 # =========================

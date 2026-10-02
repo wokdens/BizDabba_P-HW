@@ -12,7 +12,8 @@ from database import (
     record_stock_adjustment,
     record_audit_log,
     trigger_auto_backup,
-    is_product_duplicate
+    is_product_duplicate,
+    renumber_products_sequential
 )
 
 
@@ -442,6 +443,17 @@ class InventoryUI:
             fg="white",
             bg="#c82333",
             activebackground="#a71d2a",
+            font=("Arial", 10, "bold")
+        ).pack(side="left", padx=4)
+
+        tk.Button(
+            btn_frame,
+            text="🔄 Renumber IDs (1..N)",
+            width=20,
+            command=self.renumber_all_product_ids,
+            fg="white",
+            bg="#17a2b8",
+            activebackground="#138496",
             font=("Arial", 10, "bold")
         ).pack(side="left", padx=4)
 
@@ -1084,17 +1096,20 @@ class InventoryUI:
             # 1. Trigger automatic safety backup
             backup_file = trigger_auto_backup(reason="pre_clear_inventory")
 
-            # 2. Delete all products
+            # 2. Delete all products and reset auto-increment sequence
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute("DELETE FROM products")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+            if cursor.fetchone():
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'products'")
             conn.commit()
             conn.close()
 
             # 3. Record Audit Log
             record_audit_log(
                 "CLEAR_INVENTORY",
-                f"Admin cleared entire inventory ({total_count} products deleted). Pre-clear backup saved at {backup_file}"
+                f"Admin cleared entire inventory ({total_count} products deleted). Product ID counter reset to 0. Pre-clear backup saved at {backup_file}"
             )
 
             # 4. Refresh UI
@@ -1104,13 +1119,54 @@ class InventoryUI:
             messagebox.showinfo(
                 "Inventory Cleared",
                 f"All {total_count} products have been cleared from the inventory.\n\n"
-                f"Safety backup created successfully.",
+                f"• Product ID counter reset to 0 (next product added/imported will start at ID 1).\n"
+                f"• Safety backup created successfully.",
                 parent=self.frame.winfo_toplevel()
             )
         except Exception as e:
             messagebox.showerror(
                 "Error",
                 f"Failed to clear inventory: {e}",
+                parent=self.frame.winfo_toplevel()
+            )
+
+    # =========================
+    # RENUMBER PRODUCT IDS (1 TO N)
+    # =========================
+
+    def renumber_all_product_ids(self):
+        """Renumbers all inventory products sequentially starting from 1 to N (Admin PIN Protected)."""
+        if not self.all_products:
+            messagebox.showinfo(
+                "Inventory Empty",
+                "There are no products in the inventory to renumber.",
+                parent=self.frame.winfo_toplevel()
+            )
+            return
+
+        if not request_admin_pin(self.frame, f"renumber all {len(self.all_products)} product IDs sequentially (1 to N)"):
+            return
+
+        try:
+            ok, count, msg = renumber_products_sequential()
+            if ok:
+                self.load_products()
+                record_audit_log("RENUMBER_PRODUCT_IDS", f"Admin renumbered {count} products sequentially from 1 to {count}")
+                messagebox.showinfo(
+                    "IDs Renumbered",
+                    f"✅ {msg}\n\nAll product IDs now start from 1 up to {count} with zero gaps.",
+                    parent=self.frame.winfo_toplevel()
+                )
+            else:
+                messagebox.showerror(
+                    "Renumber Error",
+                    f"Failed to renumber products: {msg}",
+                    parent=self.frame.winfo_toplevel()
+                )
+        except Exception as ex:
+            messagebox.showerror(
+                "Renumber Error",
+                f"An error occurred while renumbering: {ex}",
                 parent=self.frame.winfo_toplevel()
             )
 
@@ -1325,6 +1381,14 @@ class InventoryUI:
 
             conn = get_connection()
             cursor = conn.cursor()
+
+            # If inventory is currently empty, ensure auto-increment sequence resets so IDs start from 1
+            cursor.execute("SELECT COUNT(*) FROM products")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+                if cursor.fetchone():
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'products'")
+                conn.commit()
 
             added_count = 0
             updated_count = 0
