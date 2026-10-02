@@ -132,7 +132,7 @@ def generate_thermal_receipt_pdf(
     # Calculate dynamic height based on 2-line item rows and note
     header_h = 65
     table_header_h = 16
-    item_row_h = 32  # 2 lines per item with comfortable breathing gap
+    item_row_h = 36  # 2 lines per item with clear breathing separation
     items_h = len(normalized_items) * item_row_h
 
     summary_h = 60
@@ -141,7 +141,7 @@ def generate_thermal_receipt_pdf(
         summary_h += len(note_lines) * 9 + 8
 
     footer_h = 35
-    feed_padding = 15
+    feed_padding = 18
     total_height = max(200, header_h + table_header_h + items_h + summary_h + footer_h + feed_padding)
 
     pdf = canvas.Canvas(path, pagesize=(width, total_height))
@@ -184,7 +184,7 @@ def generate_thermal_receipt_pdf(
     pdf.line(table_left, curr_y, table_right, curr_y)
 
     # =====================================
-    # TABLE ROWS (2 LINES PER ITEM)
+    # TABLE ROWS (2 LINES PER ITEM WITH BREATHING GAP)
     # =====================================
     serial = 1
     for it in normalized_items:
@@ -224,8 +224,8 @@ def generate_thermal_receipt_pdf(
         pdf.setFont("Helvetica-Bold", 7.5)
         pdf.drawRightString(table_right, curr_y, f"{total_val:,.2f}")
 
-        # Add comfortable vertical breathing gap between items
-        curr_y -= 8
+        # Distinct vertical separation between items for high readability
+        curr_y -= 14
         serial += 1
 
     curr_y -= 2

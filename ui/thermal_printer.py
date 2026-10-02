@@ -208,14 +208,14 @@ def format_esc_pos_receipt(invoice_number, customer_name, items, grand_total, pa
     out.extend(INIT)
     out.extend(FONT_A)
     out.extend(ALIGN_CENTER + BOLD_ON + b'ESTIMATE ONLY\n' + BOLD_OFF)
-    out.extend(f'Date: {d_str}\n'.encode('ascii', 'replace'))
+    out.extend(b'Date: ' + d_str.encode('ascii', 'replace') + b'\n')
     out.extend(ALIGN_LEFT)
-    out.extend(f'Est No   : INV-{clean_num}\n'.encode('ascii', 'replace'))
-    out.extend(BOLD_ON + f'Customer : {customer_name.upper()}\n'.encode('ascii', 'replace') + BOLD_OFF)
+    out.extend(f' Est No   : INV-{clean_num}\n'.encode('ascii', 'replace'))
+    out.extend(BOLD_ON + f' Customer : {customer_name.upper()}\n'.encode('ascii', 'replace') + BOLD_OFF)
     out.extend(b'=' * 48 + b'\n')
 
     # Header: 48 Chars Font A
-    out.extend(BOLD_ON + f"{'Item Description & Pricing Details':<38}{'Amount':>10}\n".encode('ascii', 'replace') + BOLD_OFF)
+    out.extend(BOLD_ON + f" {'Item Description & Pricing Details':<37}{'Amount':>10}\n".encode('ascii', 'replace') + BOLD_OFF)
     out.extend(b'-' * 48 + b'\n')
 
     serial = 1
@@ -223,7 +223,7 @@ def format_esc_pos_receipt(invoice_number, customer_name, items, grand_total, pa
     for it in normalized_items:
         qty = it.get('quantity', 0)
         total_qty += qty
-        name = str(it.get('name', ''))[:44]
+        name = str(it.get('name', ''))[:42]
         mrp = float(it.get('mrp', 0) or 0)
         price = float(it.get('price', 0) or 0)
         unit = str(it.get('unit', 'Pcs') or 'Pcs').strip()
@@ -233,11 +233,11 @@ def format_esc_pos_receipt(invoice_number, customer_name, items, grand_total, pa
         tot_str = f"{tot:,.2f}"
 
         # Line 1: Item Name in Bold
-        out.extend(BOLD_ON + f"{serial}. {name}\n".encode('ascii', 'replace') + BOLD_OFF)
+        out.extend(BOLD_ON + f" {serial}. {name}\n".encode('ascii', 'replace') + BOLD_OFF)
 
         # Line 2: Details & Tags
         unit_str = f" {unit}" if unit else " pcs"
-        left_sub = f"   {qty}{unit_str} x Rs.{price:,.2f}"
+        left_sub = f"    {qty}{unit_str} x Rs.{price:,.2f}"
 
         extra_tags = []
         if mrp > 0:
@@ -252,17 +252,17 @@ def format_esc_pos_receipt(invoice_number, customer_name, items, grand_total, pa
         if extra_tags:
             left_sub += f" ({' | '.join(extra_tags)})"
 
-        if len(left_sub) > 36:
-            left_sub = left_sub[:36]
+        if len(left_sub) > 34:
+            left_sub = left_sub[:34]
 
-        out.extend(f"{left_sub:<36}{tot_str:>12}\n".encode('ascii', 'replace'))
+        out.extend(f"{left_sub:<35}{tot_str:>12}\n".encode('ascii', 'replace'))
         if serial < len(normalized_items):
-            out.extend(b'\x1bJ\x24')  # ~4.5mm clear separation between items
+            out.extend(b'\n')  # Explicit blank line between items for guaranteed physical separation
         serial += 1
 
     out.extend(b'=' * 48 + b'\n')
-    out.extend(f"Total Items: {len(normalized_items)}   |   Total Qty: {total_qty}\n".encode('ascii', 'replace'))
-    out.extend(b'\x1bJ\x18')  # Clean breathing gap before Grand Total
+    out.extend(f" Total Items: {len(normalized_items)}   |   Total Qty: {total_qty}\n".encode('ascii', 'replace'))
+    out.extend(b'\n')  # Clean breathing gap before Grand Total
     out.extend(ALIGN_RIGHT + BOLD_ON + f"GRAND TOTAL: Rs. {grand_total:,.2f}\n".encode('ascii', 'replace') + BOLD_OFF)
     
     # Grand Total in Words

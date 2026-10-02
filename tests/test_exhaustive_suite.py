@@ -158,7 +158,12 @@ def run_exhaustive_suite():
             app.open_inventory()
             inv_ui = app.current_ui
             
-            csv_path = os.path.join(os.path.dirname(__file__), "..", "INVENTORY_SARTAJ_0786.csv")
+            csv_candidates = [
+                os.path.join(os.path.dirname(__file__), "..", "INVENTORY_SARTAJ_0786.csv"),
+                os.path.join(os.path.dirname(__file__), "..", "Inventory", "INVENTORY_SARTAJ_0786.csv"),
+                os.path.join(os.path.dirname(__file__), "..", "BizDabba By Wokdens.com", "9TH SEP INVENTORY_SARTAJ_0786.csv"),
+            ]
+            csv_path = next((p for p in csv_candidates if os.path.isfile(p)), csv_candidates[0])
             with patch('ui.inventory_ui.filedialog.askopenfilename', return_value=csv_path), \
                  patch('ui.inventory_ui.request_admin_pin', return_value=True):
                 inv_ui.import_products_csv()
