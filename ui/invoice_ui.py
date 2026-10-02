@@ -5,7 +5,10 @@ from database import (
     get_product_names,
     get_product_complete_details,
     save_complete_invoice,
-    get_customer_names_with_phone
+    get_customer_names_with_phone,
+    update_saved_invoice,
+    get_invoice_with_items,
+    get_last_active_invoice
 )
 
 from ui.autocomplete_combobox import (
@@ -516,9 +519,13 @@ class InvoiceUI:
     _saved_state = None
     
 
-    def __init__(self, parent):
+    def __init__(self, parent, app=None):
 
         self.parent = parent
+        self.app = app
+        self.editing_invoice_id = None
+        self.editing_invoice_number = None
+        self.original_invoice_total = 0.0
         self.cart_items = []
         self.editing_cart_index = None
 
@@ -550,10 +557,45 @@ class InvoiceUI:
         self.selected_cell_value = ""
 
         # =========================
+        # EDIT MODE BANNER (Hidden by default)
+        # =========================
+        self.edit_banner = tk.Frame(
+            self.frame,
+            bg="#fff3cd",
+            relief="solid",
+            bd=1,
+            padx=10,
+            pady=5
+        )
+        self.edit_banner_label = tk.Label(
+            self.edit_banner,
+            text="⚠️ EDITING INVOICE",
+            font=("Arial", 10, "bold"),
+            fg="#856404",
+            bg="#fff3cd"
+        )
+        self.edit_banner_label.pack(side="left", padx=5)
+
+        cancel_edit_btn = tk.Button(
+            self.edit_banner,
+            text="✕ Cancel Edit (Return to New Bill)",
+            command=self.cancel_invoice_edit,
+            bg="#dc3545",
+            fg="white",
+            activebackground="#c82333",
+            relief="raised",
+            bd=2,
+            padx=10,
+            pady=2,
+            font=("Arial", 9, "bold")
+        )
+        cancel_edit_btn.pack(side="right", padx=5)
+
+        # =========================
         # 1. CUSTOMER SECTION
         # =========================
 
-        customer_frame = tk.Frame(self.frame)
+        self.customer_frame = customer_frame = tk.Frame(self.frame)
         customer_frame.pack(
             fill="x",
             padx=4,
@@ -1102,6 +1144,23 @@ class InvoiceUI:
         self.save_a4_btn.pack(side="left", padx=4)
         self._apply_btn_focus(self.save_a4_btn, ring_color="#ffcc00", trigger_func=lambda: self.save_invoice(format_type="a4"))
 
+        # Recall Last Bill Button (Amber Accent)
+        self.recall_btn = tk.Button(
+            line2,
+            text="↺ Recall Last Bill (Ctrl+Z)",
+            command=self.recall_last_bill,
+            fg="#7c2d12",
+            bg="#fef3c7",
+            activebackground="#fde68a",
+            relief="raised",
+            bd=2,
+            padx=10,
+            pady=4,
+            font=("Arial", 10, "bold")
+        )
+        self.recall_btn.pack(side="left", padx=5)
+        self._apply_btn_focus(self.recall_btn, ring_color="#d97706", trigger_func=self.recall_last_bill)
+
         self.clear_btn = tk.Button(
             line2,
             text="🧹 Clear / New Bill (Ctrl+N)",
@@ -1115,7 +1174,7 @@ class InvoiceUI:
             pady=4,
             font=("Arial", 10, "bold")
         )
-        self.clear_btn.pack(side="left", padx=6)
+        self.clear_btn.pack(side="left", padx=5)
         self._apply_btn_focus(self.clear_btn, ring_color="#dc3545", trigger_func=self.clear_invoice)
 
         branding_label = tk.Label(
@@ -1147,6 +1206,9 @@ class InvoiceUI:
             # Ctrl+N: Clear / New Bill
             for seq in ("<Control-n>", "<Control-N>", "<Control-Key-n>", "<Control-Key-N>"):
                 top.bind_all(seq, lambda e: self._handle_shortcut_clear())
+            # Ctrl+Z: Recall Last Bill
+            for seq in ("<Control-z>", "<Control-Z>", "<Control-Key-z>", "<Control-Key-Z>"):
+                top.bind_all(seq, lambda e: self._handle_shortcut_recall())
         except Exception:
             pass
 
@@ -1156,6 +1218,10 @@ class InvoiceUI:
 
     def _handle_shortcut_clear(self):
         self.clear_invoice()
+        return "break"
+
+    def _handle_shortcut_recall(self):
+        self.recall_last_bill()
         return "break"
 
 
@@ -1623,9 +1689,140 @@ class InvoiceUI:
 
 
 
+    # =========================
+    # EDIT & RECALL BILLING CONTROLS
+    # =========================
+
+    def _show_edit_banner(self):
+        if not self.editing_invoice_id:
+            return
+        self.edit_banner_label.config(
+            text=f"⚠️ EDITING INVOICE #{self.editing_invoice_number} (Original: ₹ {self.original_invoice_total:,.2f}) — Modify/Remove items, then Save to reconcile stock."
+        )
+        self.edit_banner.pack(fill="x", padx=4, pady=(2, 4), before=self.customer_frame)
+        self.save_thermal_btn.config(
+            text=f"💾 Update & Print 80mm (INV-{self.editing_invoice_number})",
+            bg="#d97706"
+        )
+        self.save_a4_btn.config(
+            text=f"📄 Update & Print A4 (INV-{self.editing_invoice_number})",
+            bg="#059669"
+        )
+
+    def _hide_edit_banner(self):
+        try:
+            self.edit_banner.pack_forget()
+        except Exception:
+            pass
+        self.editing_invoice_id = None
+        self.editing_invoice_number = None
+        self.original_invoice_total = 0.0
+        try:
+            self.save_thermal_btn.config(
+                text="🖨️ Save & Print 80mm Receipt (Ctrl+P)",
+                bg="#5634f0"
+            )
+            self.save_a4_btn.config(
+                text="📄 Save & Print A4 PDF (Ctrl+J)",
+                bg="#28a745"
+            )
+        except Exception:
+            pass
+
+    def load_invoice_for_editing(self, invoice_id):
+        """Loads an existing invoice and its items into the cart for editing."""
+        inv_data = get_invoice_with_items(invoice_id)
+        if not inv_data:
+            messagebox.showerror(
+                "Error",
+                f"Invoice #{invoice_id} could not be found.",
+                parent=self.frame.winfo_toplevel()
+            )
+            return False
+
+        if inv_data.get("status") == "CANCELLED":
+            messagebox.showwarning(
+                "Cancelled Invoice",
+                f"Invoice #{inv_data['invoice_number']} is CANCELLED and cannot be edited.",
+                parent=self.frame.winfo_toplevel()
+            )
+            return False
+
+        self.editing_invoice_id = inv_data["id"]
+        self.editing_invoice_number = inv_data["invoice_number"]
+        self.original_invoice_total = inv_data["total"]
+
+        # Populate customer
+        cust_name = inv_data["customer_name"]
+        found_match = False
+        if hasattr(self, "customer_list") and self.customer_list:
+            for c_entry in self.customer_list:
+                if c_entry.startswith(cust_name) or cust_name in c_entry:
+                    self.customer_combo.set(c_entry)
+                    found_match = True
+                    break
+        if not found_match:
+            self.customer_combo.set(cust_name)
+
+        # Populate note
+        if hasattr(self.note_text, "delete"):
+            self.note_text.delete(0, tk.END)
+            self.note_text.insert(0, inv_data.get("note", ""))
+
+        # Populate cart items
+        self.cart_items = list(inv_data.get("items", []))
+        self.refresh_cart_table()
+        self.update_total()
+
+        # Populate paid amount
+        self.auto_fill_paid = False
+        self.paid_entry.delete(0, tk.END)
+        paid_val = inv_data.get("paid", 0.0)
+        self.paid_entry.insert(0, str(int(paid_val) if float(paid_val).is_integer() else paid_val))
+        self.update_pending()
+
+        # Show edit banner and update button labels
+        self._show_edit_banner()
+        return True
+
+    def cancel_invoice_edit(self, silent=False):
+        """Cancels the current invoice edit and clears the cart back to a new bill."""
+        if not self.editing_invoice_id:
+            return
+        if not silent:
+            if not messagebox.askyesno(
+                "Cancel Edit",
+                f"Discard changes to Invoice #{self.editing_invoice_number} and return to a new bill?",
+                parent=self.frame.winfo_toplevel()
+            ):
+                return
+        self.clear_invoice()
+
+    def recall_last_bill(self):
+        """Recalls the most recent active invoice into the billing cart for quick editing."""
+        last_inv = get_last_active_invoice()
+        if not last_inv:
+            messagebox.showinfo(
+                "No Invoices",
+                "No recent active invoices found to recall.",
+                parent=self.frame.winfo_toplevel()
+            )
+            return
+
+        if self.cart_items:
+            if not messagebox.askyesno(
+                "Confirm Recall",
+                f"Current cart has items.\n\nDiscard current cart and recall Invoice #{last_inv['invoice_number']} ({last_inv['customer_name']}, ₹ {last_inv['total']:,.2f}) for editing?",
+                parent=self.frame.winfo_toplevel()
+            ):
+                return
+
+        self.load_invoice_for_editing(last_inv["id"])
+
     def clear_invoice(self):
 
         InvoiceUI._saved_state = None
+        self._hide_edit_banner()
 
         self.cart_items.clear()
 
@@ -1659,7 +1856,10 @@ class InvoiceUI:
             "paid_amount": self.paid_entry.get(),
             "note": note_val,
             "auto_fill_paid": self.auto_fill_paid,
-            "rounded_total": getattr(self, "rounded_total", 0)
+            "rounded_total": getattr(self, "rounded_total", 0),
+            "editing_invoice_id": self.editing_invoice_id,
+            "editing_invoice_number": self.editing_invoice_number,
+            "original_invoice_total": self.original_invoice_total
         }
 
     def restore_state(self):
@@ -1706,6 +1906,14 @@ class InvoiceUI:
 
         self.note_text.delete(0, tk.END)
         self.note_text.insert(0, state.get("note", ""))
+
+        if state.get("editing_invoice_id"):
+            self.editing_invoice_id = state["editing_invoice_id"]
+            self.editing_invoice_number = state.get("editing_invoice_number")
+            self.original_invoice_total = state.get("original_invoice_total", 0.0)
+            self._show_edit_banner()
+        else:
+            self._hide_edit_banner()
 
     def on_tab_leave(self):
         """Called when user switches tabs away from Invoice page."""
@@ -1757,13 +1965,42 @@ class InvoiceUI:
         raw_customer = self.customer_combo.get().strip()
         customer_name = raw_customer.split(" (")[0].strip() if raw_customer else "Cash / Walk-in Customer"
 
-        invoice_id = save_complete_invoice(
-            customer_name,
-            self.cart_items,
-            grand_total,
-            paid_amount,
-            note
-        )
+        is_edit = (self.editing_invoice_id is not None)
+        edit_inv_id = self.editing_invoice_id
+        edit_inv_num = self.editing_invoice_number
+
+        if is_edit:
+            try:
+                invoice_id = update_saved_invoice(
+                    edit_inv_id,
+                    customer_name,
+                    self.cart_items,
+                    grand_total,
+                    paid_amount,
+                    note
+                )
+            except ValueError as ve:
+                messagebox.showerror(
+                    "Stock Error",
+                    str(ve),
+                    parent=self.frame.winfo_toplevel()
+                )
+                return
+            except Exception as ex:
+                messagebox.showerror(
+                    "Update Error",
+                    f"Failed to update invoice: {str(ex)}",
+                    parent=self.frame.winfo_toplevel()
+                )
+                return
+        else:
+            invoice_id = save_complete_invoice(
+                customer_name,
+                self.cart_items,
+                grand_total,
+                paid_amount,
+                note
+            )
 
         # Generate BOTH formats so both are always ready on disk
         # 1. 80mm Thermal Receipt (POS format for H80i / thermal printers)
@@ -1822,12 +2059,27 @@ class InvoiceUI:
         self.update_total()
         self.customer_combo.entry.focus_set()
 
+        if is_edit:
+            self._hide_edit_banner()
+
         format_label = "80mm Thermal Receipt" if format_type == "thermal" else "A4 PDF"
+        if is_edit:
+            success_msg = (
+                f"Invoice #{invoice_id} updated successfully!\n\n"
+                f"• Stock reconciled automatically (returned previous quantities, deducted new).\n"
+                f"• Generated: {format_label}{direct_msg}\n"
+                f"• Both 80mm Thermal & A4 formats are stored and ready."
+            )
+        else:
+            success_msg = (
+                f"Invoice #{invoice_id} saved successfully!\n\n"
+                f"• Generated: {format_label}{direct_msg}\n"
+                f"• Both 80mm Thermal & A4 formats are stored and ready."
+            )
+
         messagebox.showinfo(
             "Success",
-            f"Invoice #{invoice_id} saved successfully!\n\n"
-            f"• Generated: {format_label}{direct_msg}\n"
-            f"• Both 80mm Thermal & A4 formats are stored and ready.",
+            success_msg,
             parent=self.frame.winfo_toplevel()
         )
 

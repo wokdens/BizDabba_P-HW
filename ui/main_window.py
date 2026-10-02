@@ -277,7 +277,7 @@ class MainWindow:
     # SALES INVOICE
     # =========================
 
-    def open_invoice(self):
+    def open_invoice(self, invoice_id_to_edit=None):
 
         self.clear_content()
 
@@ -285,7 +285,9 @@ class MainWindow:
             self.invoice_btn
         )
 
-        self.current_ui = InvoiceUI(self.content_frame)
+        self.current_ui = InvoiceUI(self.content_frame, app=self)
+        if invoice_id_to_edit:
+            self.current_ui.load_invoice_for_editing(invoice_id_to_edit)
 
     # =========================
     # INVOICE HISTORY
@@ -299,7 +301,7 @@ class MainWindow:
             self.invoice_history_btn
         )
 
-        self.current_ui = InvoiceHistoryUI(self.content_frame)
+        self.current_ui = InvoiceHistoryUI(self.content_frame, app=self)
 
     # =========================
     # LEDGER

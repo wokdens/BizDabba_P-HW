@@ -108,6 +108,20 @@ def run_migrations():
         ADD COLUMN note TEXT DEFAULT ''
         """)
 
+    if not column_exists(
+        "invoices",
+        "status"
+    ):
+        cursor.execute("""
+        ALTER TABLE invoices
+        ADD COLUMN status TEXT DEFAULT 'ACTIVE'
+        """)
+        cursor.execute("""
+        UPDATE invoices
+        SET status = 'ACTIVE'
+        WHERE status IS NULL
+        """)
+
     # =========================
     # PRODUCTS TABLE
     # =========================
@@ -351,7 +365,8 @@ def create_tables():
         paid REAL,
         pending REAL,
         invoice_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        note TEXT DEFAULT ''
+        note TEXT DEFAULT '',
+        status TEXT DEFAULT 'ACTIVE'
     )
     """)
 
@@ -936,9 +951,10 @@ def save_complete_invoice(
         paid,
         pending,
         note,
+        status,
         invoice_date
     )                    
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+    VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', datetime('now', 'localtime'))
     """, (
         invoice_number,
         customer_id,
@@ -1016,6 +1032,307 @@ def save_complete_invoice(
     return invoice_number
 
 
+def cancel_invoice(invoice_id, authorized_by="Owner PIN"):
+    """
+    Cancels an active invoice:
+    1. Restores all sold quantities back into products.stock.
+    2. Logs stock adjustments for transparency and audits.
+    3. Sets invoices.status = 'CANCELLED' and invoices.pending = 0.0.
+    4. Records security audit log.
+    Returns (True, message) or raises Exception.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id, invoice_number, COALESCE(status, 'ACTIVE'), total FROM invoices WHERE id = ?", (invoice_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False, f"Invoice #{invoice_id} not found."
+        if row[2] == "CANCELLED":
+            return False, f"Invoice #{row[1]} is already cancelled."
+
+        inv_num = row[1]
+        total_val = row[3]
+
+        # 1. Restore stock
+        cursor.execute("""
+        SELECT ii.product_id, ii.quantity, p.name
+        FROM invoice_items ii
+        LEFT JOIN products p ON ii.product_id = p.id
+        WHERE ii.invoice_id = ?
+        """, (invoice_id,))
+        items = cursor.fetchall()
+
+        total_restored = 0
+        for prod_id, qty, p_name in items:
+            cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (qty, prod_id))
+            cursor.execute("""
+            INSERT INTO stock_adjustments (product_id, adjustment_type, quantity, reason, timestamp)
+            VALUES (?, 'INVOICE_CANCELLED', ?, ?, datetime('now', 'localtime'))
+            """, (prod_id, qty, f"Restored from cancelled invoice #{inv_num}"))
+            total_restored += qty
+
+        # 2. Update status and clear pending balance
+        cursor.execute("""
+        UPDATE invoices
+        SET status = 'CANCELLED',
+            pending = 0.0
+        WHERE id = ?
+        """, (invoice_id,))
+
+        # 3. Audit log
+        cursor.execute("""
+        INSERT INTO security_audit_logs (action_type, description, authorized_by, timestamp)
+        VALUES ('INVOICE_CANCELLED', ?, ?, datetime('now', 'localtime'))
+        """, (f"Invoice #{inv_num} (₹ {total_val:,.2f}) cancelled. Restored {total_restored} items across {len(items)} products.", authorized_by))
+
+        conn.commit()
+
+        try:
+            trigger_auto_backup(reason="invoice_cancel")
+        except Exception:
+            pass
+
+        return True, f"Invoice #{inv_num} cancelled successfully. {total_restored} units returned to inventory."
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def get_invoice_with_items(invoice_id):
+    """
+    Retrieves full invoice details including its line items.
+    Returns a dict with:
+      id, invoice_number, customer_id, customer_name, total, paid, pending,
+      note, invoice_date, status, and items: list of dicts matching cart_items structure.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        SELECT
+            invoices.id,
+            invoices.invoice_number,
+            invoices.customer_id,
+            customers.name,
+            invoices.total,
+            invoices.paid,
+            invoices.pending,
+            COALESCE(invoices.note, ''),
+            invoices.invoice_date,
+            COALESCE(invoices.status, 'ACTIVE')
+        FROM invoices
+        JOIN customers ON invoices.customer_id = customers.id
+        WHERE invoices.id = ? OR invoices.invoice_number = ?
+        """, (invoice_id, str(invoice_id)))
+        inv_row = cursor.fetchone()
+        if not inv_row:
+            return None
+
+        actual_id = inv_row[0]
+        cursor.execute("""
+        SELECT
+            ii.product_id,
+            p.name,
+            ii.quantity,
+            ii.mrp,
+            ii.price,
+            COALESCE(ii.unit, p.unit, 'Pcs'),
+            COALESCE(ii.increase, 0.0),
+            COALESCE(ii.discount, 0.0),
+            COALESCE(ii.discount_base, 'Price'),
+            ii.total
+        FROM invoice_items ii
+        LEFT JOIN products p ON ii.product_id = p.id
+        WHERE ii.invoice_id = ?
+        ORDER BY ii.id ASC
+        """, (actual_id,))
+        item_rows = cursor.fetchall()
+
+        items = []
+        for r in item_rows:
+            items.append({
+                "product_id": r[0],
+                "name": r[1] or "Unknown Product",
+                "quantity": r[2],
+                "mrp": float(r[3] or 0),
+                "price": float(r[4] or 0),
+                "unit": str(r[5] or "Pcs"),
+                "increase": float(r[6] or 0),
+                "discount": float(r[7] or 0),
+                "discount_base": str(r[8] or "Price"),
+                "total": float(r[9] or 0)
+            })
+
+        return {
+            "id": actual_id,
+            "invoice_number": inv_row[1],
+            "customer_id": inv_row[2],
+            "customer_name": inv_row[3],
+            "total": float(inv_row[4] or 0),
+            "paid": float(inv_row[5] or 0),
+            "pending": float(inv_row[6] or 0),
+            "note": inv_row[7],
+            "invoice_date": inv_row[8],
+            "status": inv_row[9],
+            "items": items
+        }
+    finally:
+        conn.close()
+
+
+def update_saved_invoice(
+    invoice_id,
+    customer_name,
+    cart_items,
+    grand_total,
+    paid_amount,
+    note=""
+):
+    """
+    Atomically updates an existing saved invoice:
+    1. Returns all previously sold items back to product stock.
+    2. Deducts the newly specified items from product stock.
+    3. Replaces invoice_items rows.
+    4. Updates customer, totals, paid, pending, note in invoices table.
+    5. Records an audit log and triggers auto-backup.
+    Returns invoice_number or raises Exception.
+    """
+    customer_id = get_or_create_customer(customer_name)
+    pending = grand_total - paid_amount
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # 1. Fetch invoice info & check status
+        cursor.execute("SELECT id, invoice_number, COALESCE(status, 'ACTIVE') FROM invoices WHERE id = ?", (invoice_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Invoice #{invoice_id} not found.")
+        if row[2] == "CANCELLED":
+            raise ValueError(f"Invoice #{row[1]} is cancelled and cannot be modified.")
+
+        inv_num = row[1]
+
+        # 2. Get old items to restore stock
+        cursor.execute("SELECT product_id, quantity FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
+        old_items = cursor.fetchall()
+        for prod_id, old_qty in old_items:
+            cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (old_qty, prod_id))
+
+        # 3. Check and deduct stock for new items
+        for item in cart_items:
+            prod_id = item["product_id"]
+            new_qty = item["quantity"]
+            cursor.execute("SELECT stock, name FROM products WHERE id = ?", (prod_id,))
+            prod_info = cursor.fetchone()
+            current_stock = prod_info[0] if prod_info else 0
+            if current_stock < new_qty:
+                p_name = item.get("name", "Product")
+                raise ValueError(f"Insufficient stock for '{p_name}': Available {current_stock}, requested {new_qty}")
+            cursor.execute("UPDATE products SET stock = stock - ? WHERE id = ?", (new_qty, prod_id))
+
+        # 4. Replace invoice_items
+        cursor.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
+        for item in cart_items:
+            cursor.execute("""
+            INSERT INTO invoice_items(
+                invoice_id,
+                product_id,
+                quantity,
+                mrp,
+                price,
+                discount,
+                total,
+                discount_base,
+                increase,
+                unit
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                invoice_id,
+                item["product_id"],
+                item["quantity"],
+                item["mrp"],
+                item["price"],
+                item.get("discount", 0.0),
+                item["total"],
+                item.get("discount_base", "Price"),
+                item.get("increase", 0.0),
+                item.get("unit", "Pcs")
+            ))
+
+        # 5. Update invoice
+        cursor.execute("""
+        UPDATE invoices
+        SET customer_id = ?,
+            total = ?,
+            paid = ?,
+            pending = ?,
+            note = ?
+        WHERE id = ?
+        """, (
+            customer_id,
+            grand_total,
+            paid_amount,
+            pending,
+            note,
+            invoice_id
+        ))
+
+        # 6. Audit log
+        cursor.execute("""
+        INSERT INTO security_audit_logs (action_type, description, authorized_by, timestamp)
+        VALUES ('INVOICE_MODIFIED', ?, 'Owner PIN', datetime('now', 'localtime'))
+        """, (f"Invoice #{inv_num} updated with {len(cart_items)} items. Total: ₹ {grand_total:,.2f}",))
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+    try:
+        trigger_auto_backup(reason="invoice_edit")
+    except Exception:
+        pass
+
+    return inv_num
+
+
+def get_last_active_invoice():
+    """Returns the most recent active invoice details, or None."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+        SELECT
+            invoices.id,
+            invoices.invoice_number,
+            invoices.total,
+            customers.name
+        FROM invoices
+        JOIN customers ON invoices.customer_id = customers.id
+        WHERE COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
+        ORDER BY invoices.id DESC
+        LIMIT 1
+        """)
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row[0],
+                "invoice_number": row[1],
+                "total": float(row[2] or 0),
+                "customer_name": row[3]
+            }
+        return None
+    finally:
+        conn.close()
+
+
 
 # =========================
 # LEDGER
@@ -1040,6 +1357,8 @@ def get_ledger_data():
 
     JOIN customers
     ON invoices.customer_id = customers.id
+
+    WHERE COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
 
     ORDER BY invoices.id DESC
     """)
@@ -1083,6 +1402,7 @@ def get_customer_history(customer_name):
     ON invoice_items.product_id = products.id
 
     WHERE customers.name = ?
+      AND COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
 
     ORDER BY invoices.id DESC
     """, (
@@ -1214,6 +1534,7 @@ def get_total_pending(customer_name):
     ON invoices.customer_id = customers.id
 
     WHERE customers.name = ?
+      AND COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
     """, (
         customer_name,
     ))
@@ -1405,6 +1726,7 @@ def get_customers_with_pending():
     FROM customers
     JOIN invoices ON customers.id = invoices.customer_id
     WHERE invoices.pending > 0
+      AND COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
     GROUP BY customers.id, cust_name
     ORDER BY total_pending DESC
     """)
@@ -1427,7 +1749,8 @@ def get_customer_invoices(customer_name):
         invoices.total,
         invoices.paid,
         invoices.pending,
-        COALESCE(invoices.note, '')
+        COALESCE(invoices.note, ''),
+        COALESCE(invoices.status, 'ACTIVE')
     FROM invoices
     JOIN customers ON invoices.customer_id = customers.id
     WHERE COALESCE(NULLIF(TRIM(customers.name), ''), 'Unnamed Customer') = ? OR customers.name = ?
@@ -1883,6 +2206,7 @@ def get_daily_sales_and_profit(target_date=None):
             COALESCE(SUM(invoices.pending), 0)
         FROM invoices
         WHERE {date_clause}
+          AND COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
         """, date_param)
 
         inv_count, total_sales, total_paid, total_pending = cursor.fetchone()
@@ -1899,6 +2223,7 @@ def get_daily_sales_and_profit(target_date=None):
         JOIN invoices ON ii.invoice_id = invoices.id
         JOIN products p ON ii.product_id = p.id
         WHERE {date_clause}
+          AND COALESCE(invoices.status, 'ACTIVE') != 'CANCELLED'
         GROUP BY p.id, p.name
         ORDER BY item_profit DESC
         """, date_param)
