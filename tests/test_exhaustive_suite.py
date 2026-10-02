@@ -148,8 +148,8 @@ def run_exhaustive_suite():
              patch('ui.inventory_ui.request_admin_pin', return_value=True):
 
             app = MainWindow(root)
-            assert app.root.title() == "BizDabba_Diwali by wokdens.com", f"Title mismatch: {app.root.title()}"
-            print("  -> MainWindow title verified: 'BizDabba_Diwali by wokdens.com'")
+            assert app.root.title() == "BizDibba Diwali v2.0 by wokdens.com", f"Title mismatch: {app.root.title()}"
+            print("  -> MainWindow title verified: 'BizDibba Diwali v2.0 by wokdens.com'")
 
             # -------------------------------------------------------------
             # STAGE 6: Inventory CSV Import Permutations & Category Refresh
