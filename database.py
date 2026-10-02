@@ -418,6 +418,10 @@ def create_tables():
     # Automatically run migrations to guarantee schema synchronization
     run_migrations()
 
+    # Automatically initialize default Admin PIN to 8160 if not already configured
+    if not get_setting("admin_pin_hash"):
+        set_setting("admin_pin_hash", hash_pin("8160"))
+
 
 
 
