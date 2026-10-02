@@ -578,7 +578,7 @@ def verify_admin_pin(entered_pin):
 
 
 def reset_application_data():
-    """Clear all transactional and inventory data so the app starts fresh."""
+    """Clear all transactional and inventory data so the app starts completely fresh."""
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -588,10 +588,11 @@ def reset_application_data():
     cursor.execute("DELETE FROM products")
     cursor.execute("DELETE FROM customers")
     cursor.execute("DELETE FROM categories")
+    cursor.execute("DELETE FROM stock_adjustments")
 
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
     if cursor.fetchone():
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'customers', 'invoices', 'invoice_items', 'categories')")
+        cursor.execute("DELETE FROM sqlite_sequence")
 
     conn.commit()
     conn.close()

@@ -17,7 +17,7 @@ BACKUPS_DIR = os.path.join(BASE_DIR, "backups")
 # Dedicated rolling auto-backups directory in LocalAppData (safe from application directory changes)
 local_app_data = os.environ.get("LOCALAPPDATA")
 if local_app_data:
-    AUTO_BACKUPS_DIR = os.path.join(local_app_data, "BizDibba_Diwali_v2.0", "Backups")
+    AUTO_BACKUPS_DIR = os.path.join(local_app_data, "BizDibba_Diwali_v3.0", "Backups")
 else:
     AUTO_BACKUPS_DIR = os.path.join(BACKUPS_DIR, "auto")
 

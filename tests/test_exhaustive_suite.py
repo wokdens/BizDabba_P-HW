@@ -92,7 +92,14 @@ def run_exhaustive_suite():
         for raw in invalid_cases:
             valid, _ = validate_and_normalize_indian_mobile(raw)
             assert valid is False, f"Expected invalid for: {raw}"
-        print("  -> All 17 mobile number permutations verified OK.")
+
+        # Test optional phone allowance (v3.0 feature)
+        valid_empty, norm_empty = validate_and_normalize_indian_mobile("", allow_empty=True)
+        assert valid_empty is True and norm_empty == "", "allow_empty=True should accept empty string!"
+        valid_space, norm_space = validate_and_normalize_indian_mobile("   ", allow_empty=True)
+        assert valid_space is True and norm_space == "", "allow_empty=True should accept whitespace!"
+
+        print("  -> All 17 mobile number permutations verified OK (including optional blank).")
 
         # -------------------------------------------------------------
         # STAGE 3: Grand Total in Indian Words Conversion
@@ -148,8 +155,8 @@ def run_exhaustive_suite():
              patch('ui.inventory_ui.request_admin_pin', return_value=True):
 
             app = MainWindow(root)
-            assert app.root.title() == "BizDibba Diwali v2.0 by wokdens.com", f"Title mismatch: {app.root.title()}"
-            print("  -> MainWindow title verified: 'BizDibba Diwali v2.0 by wokdens.com'")
+            assert app.root.title() == "BizDibba Diwali v3.0 by wokdens.com", f"Title mismatch: {app.root.title()}"
+            print("  -> MainWindow title verified: 'BizDibba Diwali v3.0 by wokdens.com'")
 
             # -------------------------------------------------------------
             # STAGE 6: Inventory CSV Import Permutations & Category Refresh
@@ -347,13 +354,92 @@ def run_exhaustive_suite():
             assert found_cancelled, "Cancelled invoice status not found in Invoice History table!"
             print("  -> Invoice cancellation verified: 100% stock restored, dues cleared, audit logged.")
 
+            # -------------------------------------------------------------
+            # STAGE 10: BizDibba Diwali v3.0 Features Verification
+            # -------------------------------------------------------------
+            print("[STAGE 10/10] Testing v3.0 Keyboard Navigation, Optional Phone & Dashboard Reset...")
+
+            # 1. Test Customer Creation with blank/optional phone
+            app.open_invoice()
+            inv_ui = app.current_ui
+            cust_id = database.get_or_create_customer("Counter Walk-in", "", "Main Bazaar")
+            conn = database.get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id, name, phone, address FROM customers WHERE id = ?", (cust_id,))
+            cust_record = cur.fetchone()
+            conn.close()
+            assert cust_record is not None, "Failed to create customer with optional blank phone!"
+            assert cust_record[2] == "", f"Expected empty phone, got '{cust_record[2]}'"
+            print("  -> Customer created with optional empty mobile number verified.")
+
+            # 2. Test Autocomplete Keyboard Navigation (Feature 4)
+            cb = inv_ui.product_combo
+            cb.set_completion_list(["Orient Ceiling Fan 1200mm", "Usha Farrata Fan 500mm", "Havells Exhaust Fan 150mm"])
+            cb.entry.delete(0, tk.END)
+            cb.entry.insert(0, "Fan")
+            cb.show_popup(["Orient Ceiling Fan 1200mm", "Usha Farrata Fan 500mm", "Havells Exhaust Fan 150mm"])
+
+            # Test Down Arrow moves to listbox item 1
+            cb._on_down_arrow(None)
+            assert cb.listbox.curselection() == (1,), f"Expected selection (1,), got {cb.listbox.curselection()}"
+
+            # Test Tab moves down to item 2
+            cb._on_listbox_down(None)
+            assert cb.listbox.curselection() == (2,), f"Expected selection (2,), got {cb.listbox.curselection()}"
+
+            # Test Up Arrow moves up to item 1
+            cb._on_listbox_up(None)
+            assert cb.listbox.curselection() == (1,), f"Expected selection (1,), got {cb.listbox.curselection()}"
+
+            # Test Up Arrow moves up to item 0
+            cb._on_listbox_up(None)
+            assert cb.listbox.curselection() == (0,), f"Expected selection (0,), got {cb.listbox.curselection()}"
+
+            # Test Enter selects item
+            cb._on_listbox_enter(None)
+            assert cb.get() == "Orient Ceiling Fan 1200mm", f"Expected 'Orient Ceiling Fan 1200mm', got '{cb.get()}'"
+            print("  -> Autocomplete keyboard navigation (Down, Tab, Up, Enter) verified OK.")
+
+            # 3. Test Dashboard Reset All Data without PIN (Feature 3)
+            app.open_dashboard()
+            dash_ui = app.current_ui
+
+            # Ensure we had data prior to reset
+            assert database.get_total_products() > 0, "Database should contain products before reset test!"
+
+            with patch('tkinter.messagebox.askyesno', return_value=True):
+                dash_ui.reset_all_system_data()
+
+            # Verify complete deletion
+            assert database.get_total_products() == 0, "Products table was not wiped!"
+            assert database.get_total_customers() == 0, "Customers table was not wiped!"
+            assert database.get_last_active_invoice() is None, "Invoices table was not wiped!"
+
+            # 4. Verify ID starts cleanly from 1 upon new insertion (Feature 1)
+            database.add_product(
+                name="Test LED Bulb 9W",
+                mrp=120.0,
+                purchase_price=60.0,
+                selling_price=80.0,
+                stock=50,
+                unit="Pcs",
+                category="TEST_CAT"
+            )
+            conn = database.get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM products WHERE name = 'Test LED Bulb 9W'")
+            new_pid = cur.fetchone()[0]
+            conn.close()
+            assert new_pid == 1, f"Expected first product after reset to have ID 1, got {new_pid}!"
+            print("  -> Dashboard Reset All Data (without PIN) & Reset ID to 1 verified OK.")
+
         root.destroy()
     finally:
         database.DATABASE_PATH = old_db_path
         shutil_rmtree_safe(temp_dir)
 
     print("=" * 70)
-    print("  ALL 9 EXHAUSTIVE STAGES PASSED WITH ZERO ERRORS (100% SUCCESS)!")
+    print("  ALL 10 EXHAUSTIVE STAGES PASSED WITH ZERO ERRORS (100% SUCCESS)!")
     print("=" * 70)
 
 def shutil_rmtree_safe(path):

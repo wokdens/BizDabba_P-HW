@@ -58,6 +58,9 @@ def run_tests():
 
         # Select product
         products = database.get_product_names()
+        if not products:
+            database.add_product("Test Product 1", 100.0, 50.0, 80.0, 20, "Pcs", "General")
+            products = database.get_product_names()
         assert len(products) > 0, 'No products in database!'
         prod_name = products[0]
         inv_ui.product_combo.set(prod_name)
@@ -247,8 +250,13 @@ def run_tests():
         print('[TEST 9] Testing InventoryUI Import CSV and Live Refresh...')
         app.open_inventory()
         inv_ui = app.current_ui
-        csv_file = os.path.join(os.path.dirname(__file__), '..', 'INVENTORY_SARTAJ_0786.csv')
-        assert os.path.exists(csv_file), 'INVENTORY_SARTAJ_0786.csv not found in repo root!'
+        csv_candidates = [
+            os.path.join(os.path.dirname(__file__), '..', 'INVENTORY_SARTAJ_0786.csv'),
+            os.path.join(os.path.dirname(__file__), '..', 'Inventory', 'INVENTORY_SARTAJ_0786.csv'),
+            os.path.join(os.path.dirname(__file__), '..', 'BizDabba By Wokdens.com', '9TH SEP INVENTORY_SARTAJ_0786.csv'),
+        ]
+        csv_file = next((p for p in csv_candidates if os.path.isfile(p)), csv_candidates[0])
+        assert os.path.exists(csv_file), f'Inventory CSV not found at {csv_file}!'
 
         with patch('ui.inventory_ui.filedialog.askopenfilename', return_value=csv_file), \
              patch('ui.inventory_ui.request_admin_pin', return_value=True), \

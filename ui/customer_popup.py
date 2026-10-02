@@ -3,10 +3,11 @@ import tkinter as tk
 from tkinter import messagebox
 from database import get_connection
 
-def validate_and_normalize_indian_mobile(phone_input: str):
+def validate_and_normalize_indian_mobile(phone_input: str, allow_empty: bool = False):
     """
     Validates and normalizes an Indian mobile number.
     Rules:
+      - If allow_empty=True and input is blank, returns (True, "").
       - Must be 10 digits starting with 6, 7, 8, or 9 (e.g., 9876543210).
       - If 11 digits, must start with 0 followed by 6-9 (e.g., 09876543210).
       - If starts with +91 or +91- or 91, the 10-digit number must follow (e.g., +91-9876543210).
@@ -16,6 +17,8 @@ def validate_and_normalize_indian_mobile(phone_input: str):
       (False, error_message) if invalid
     """
     if not phone_input or not phone_input.strip():
+        if allow_empty:
+            return True, ""
         return False, "Mobile number is required."
 
     raw = phone_input.strip()
@@ -88,7 +91,7 @@ class CustomerPopup:
         # PHONE
         tk.Label(
             form_frame,
-            text="Mobile Number * (10 digits / +91- / 0)",
+            text="Mobile Number (Optional - 10 digits / +91- / 0)",
             font=("Arial", 9, "bold")
         ).pack(anchor="w")
 
@@ -168,42 +171,44 @@ class CustomerPopup:
             self.name_entry.focus_set()
             return
 
-        # Validate and normalize Indian mobile number
-        is_valid, phone_result = validate_and_normalize_indian_mobile(phone_raw)
-        if not is_valid:
-            messagebox.showerror(
-                "Invalid Mobile Number",
-                f"{phone_result}\n\n"
-                "Accepted formats:\n"
-                "• 10 Digits: 9876543210 (starts with 6, 7, 8, or 9)\n"
-                "• With 0: 09876543210 (11 digits)\n"
-                "• With +91: +91-9876543210 or +91 9876543210",
-                parent=self.window
-            )
-            self.phone_entry.focus_set()
-            return
-
-        normalized_phone = phone_result
+        # Validate and normalize Indian mobile number (optional)
+        normalized_phone = ""
+        if phone_raw:
+            is_valid, phone_result = validate_and_normalize_indian_mobile(phone_raw, allow_empty=True)
+            if not is_valid:
+                messagebox.showerror(
+                    "Invalid Mobile Number",
+                    f"{phone_result}\n\n"
+                    "Accepted formats:\n"
+                    "• 10 Digits: 9876543210 (starts with 6, 7, 8, or 9)\n"
+                    "• With 0: 09876543210 (11 digits)\n"
+                    "• With +91: +91-9876543210 or +91 9876543210",
+                    parent=self.window
+                )
+                self.phone_entry.focus_set()
+                return
+            normalized_phone = phone_result
 
         conn = get_connection()
         cursor = conn.cursor()
 
         try:
-            # Check for existing customer with the same phone
-            cursor.execute(
-                "SELECT id, name FROM customers WHERE phone = ?",
-                (normalized_phone,)
-            )
-            existing = cursor.fetchone()
-            if existing:
-                messagebox.showwarning(
-                    "Duplicate Mobile Number",
-                    f"A customer with mobile number {normalized_phone} is already registered as '{existing[1]}'.",
-                    parent=self.window
+            # Check for existing customer with the same phone (only if phone provided)
+            if normalized_phone:
+                cursor.execute(
+                    "SELECT id, name FROM customers WHERE phone = ?",
+                    (normalized_phone,)
                 )
-                conn.close()
-                self.phone_entry.focus_set()
-                return
+                existing = cursor.fetchone()
+                if existing:
+                    messagebox.showwarning(
+                        "Duplicate Mobile Number",
+                        f"A customer with mobile number {normalized_phone} is already registered as '{existing[1]}'.",
+                        parent=self.window
+                    )
+                    conn.close()
+                    self.phone_entry.focus_set()
+                    return
 
             cursor.execute("""
             INSERT INTO customers(
@@ -230,9 +235,10 @@ class CustomerPopup:
 
         conn.close()
 
+        display_phone = f" ({normalized_phone})" if normalized_phone else ""
         messagebox.showinfo(
             "Success",
-            f"Customer '{name}' ({normalized_phone}) added successfully!",
+            f"Customer '{name}'{display_phone} added successfully!",
             parent=self.window
         )
 

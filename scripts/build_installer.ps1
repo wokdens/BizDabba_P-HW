@@ -37,6 +37,7 @@ Write-Host "[1/4] Found Inno Setup Compiler: $IsccPath" -ForegroundColor Green
 
 # 2. Sign main Executable
 $MainExeCandidates = @(
+    (Join-Path $ProjectDir "dist\BizDibba_Diwali_v3.0\BizDibba_Diwali_v3.0.exe"),
     (Join-Path $ProjectDir "dist\BizDibba_Diwali_v2.0\BizDibba_Diwali_v2.0.exe"),
     (Join-Path $ProjectDir "dist\BizDabba_Diwali\BizDabba_Diwali.exe"),
     (Join-Path $ProjectDir "dist\BusinessApp\BusinessApp.exe")
@@ -57,6 +58,7 @@ Write-Host "[3/4] Compiling Installer using Inno Setup..." -ForegroundColor Cyan
 & $IsccPath $IssFile
 
 $InstallerCandidates = @(
+    (Join-Path $ProjectDir "dist_installer\BizDibba_Diwali_v3.0_Setup.exe"),
     (Join-Path $ProjectDir "dist_installer\BizDibba_Diwali_v2.0_Setup.exe"),
     (Join-Path $ProjectDir "dist_installer\BizDabba_Diwali_Setup_v1.0.exe"),
     (Join-Path $ProjectDir "dist_installer\BizDabba_Setup_v1.0.exe")

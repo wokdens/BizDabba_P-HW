@@ -20,7 +20,8 @@ from database import (
     get_shop_details,
     set_shop_details,
     get_audit_logs,
-    record_audit_log
+    record_audit_log,
+    reset_application_data
 )
 
 
@@ -34,6 +35,7 @@ class DashboardUI:
 
     def __init__(self, parent):
 
+        self.parent = parent
         self.frame = tk.Frame(
             parent,
             bg="#f5f5f5"
@@ -71,7 +73,7 @@ class DashboardUI:
         backup_btn = tk.Button(
             top_btn_frame,
             text="Backup Database",
-            width=18,
+            width=14,
             height=2,
             bg="#4a90e2",
             fg="white",
@@ -81,13 +83,13 @@ class DashboardUI:
 
         backup_btn.pack(
             side="left",
-            padx=8
+            padx=5
         )
 
         restore_btn = tk.Button(
             top_btn_frame,
             text="Restore Database",
-            width=18,
+            width=14,
             height=2,
             bg="#ff6666",
             fg="white",
@@ -97,13 +99,13 @@ class DashboardUI:
 
         restore_btn.pack(
             side="left",
-            padx=8
+            padx=5
         )
 
         z_report_btn = tk.Button(
             top_btn_frame,
             text="📊 Daily Summary (Z-Report)",
-            width=24,
+            width=22,
             height=2,
             bg="#28a745",
             fg="white",
@@ -113,13 +115,13 @@ class DashboardUI:
 
         z_report_btn.pack(
             side="left",
-            padx=8
+            padx=5
         )
 
         change_pin_btn = tk.Button(
             top_btn_frame,
-            text="🔒 Change Admin PIN",
-            width=18,
+            text="🔒 Change PIN",
+            width=14,
             height=2,
             bg="#343a40",
             fg="white",
@@ -129,13 +131,13 @@ class DashboardUI:
 
         change_pin_btn.pack(
             side="left",
-            padx=8
+            padx=5
         )
 
         shop_details_btn = tk.Button(
             top_btn_frame,
             text="🏬 Shop Details",
-            width=16,
+            width=13,
             height=2,
             bg="#6c757d",
             fg="white",
@@ -145,13 +147,13 @@ class DashboardUI:
 
         shop_details_btn.pack(
             side="left",
-            padx=8
+            padx=5
         )
 
         audit_logs_btn = tk.Button(
             top_btn_frame,
             text="🛡️ Audit Logs",
-            width=16,
+            width=13,
             height=2,
             bg="#007bff",
             fg="white",
@@ -161,7 +163,23 @@ class DashboardUI:
 
         audit_logs_btn.pack(
             side="left",
-            padx=8
+            padx=5
+        )
+
+        reset_btn = tk.Button(
+            top_btn_frame,
+            text="💣 Reset All Data",
+            width=15,
+            height=2,
+            bg="#dc3545",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            command=self.reset_all_system_data
+        )
+
+        reset_btn.pack(
+            side="left",
+            padx=5
         )
 
 
@@ -574,6 +592,53 @@ class DashboardUI:
             messagebox.showerror(
                 "Error",
                 f"Restore failed: {str(e)}"
+            )
+
+    # =========================
+    # RESET ALL SYSTEM DATA (EMPTY)
+    # =========================
+
+    def reset_all_system_data(self):
+        """Delete all invoices, customer details, and inventory without requiring a PIN.
+        Asks for confirmation once.
+        """
+        confirm = messagebox.askyesno(
+            "Confirm System Reset",
+            "Are you sure you want to delete ALL invoices, customer details, and inventory?\n\n"
+            "• All invoices and sales history will be permanently deleted.\n"
+            "• All customers and balances will be removed.\n"
+            "• All products and inventory will be cleared.\n"
+            "• Product and invoice IDs will restart from 1.\n\n"
+            "This will completely empty the system. Do you want to proceed?",
+            parent=self.frame
+        )
+
+        if not confirm:
+            return
+
+        try:
+            reset_application_data()
+            try:
+                record_audit_log("RESET_ALL_DATA", "All invoices, customers, and inventory data deleted by user.")
+            except Exception:
+                pass
+
+            messagebox.showinfo(
+                "System Reset Complete",
+                "All invoices, customer details, and inventory have been deleted successfully.\n\n"
+                "The system is now completely empty and ID counters have been reset to 1.",
+                parent=self.frame
+            )
+
+            parent = self.parent
+            self.frame.destroy()
+            self.__init__(parent)
+
+        except Exception as e:
+            messagebox.showerror(
+                "Reset Failed",
+                f"An error occurred while resetting application data:\n{str(e)}",
+                parent=self.frame
             )
 
     # ========================================

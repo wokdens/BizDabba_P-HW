@@ -760,21 +760,25 @@ class LedgerUI:
 
         display_count = 0
         for row in getattr(self, "all_invoices", []):
-            invoice_id, invoice_number, date_str, total, paid, pending, note = row
+            invoice_id, invoice_number, date_str, total, paid, pending, note = row[:7]
+            inv_status = row[7] if len(row) > 7 else "ACTIVE"
 
             # Status filter
-            if status_val == "Pending" and pending <= 0:
+            if status_val == "Pending" and (pending <= 0 or inv_status == "CANCELLED"):
                 continue
-            elif status_val == "Paid" and pending > 0:
+            elif status_val == "Paid" and (pending > 0 or inv_status == "CANCELLED"):
                 continue
 
             # Keyword filter (invoice number, date, note, amounts)
             if keyword:
-                searchable_text = f"inv-{invoice_number} {date_str} {note or ''} {total} {paid} {pending}".lower()
+                searchable_text = f"inv-{invoice_number} {date_str} {note or ''} {total} {paid} {pending} {inv_status}".lower()
                 if keyword not in searchable_text:
                     continue
 
-            status = "Pending" if pending > 0 else "Paid"
+            if inv_status == "CANCELLED":
+                status = "CANCELLED"
+            else:
+                status = "Pending" if pending > 0 else "Paid"
             values = (
                 str(display_count + 1),
                 f"INV-{invoice_number}",
