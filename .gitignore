@@ -12,6 +12,8 @@ dist_old2/
 dist_installer/
 executable_old/
 *.egg-info/
+BizDabba By Wokdens.com/
+Inventory/
 
 # Virtual Environments
 .venv/
@@ -33,7 +35,11 @@ invoices/
 .webui_secret_key
 
 
+# Archives
+*.zip
+
 # IDE & Editor files
 .vscode/
 .idea/
 *.swp
+

@@ -21,7 +21,9 @@ from database import (
     set_shop_details,
     get_audit_logs,
     record_audit_log,
-    reset_application_data
+    reset_application_data,
+    safe_flush_pen_drive,
+    seed_paints_and_hardware_demo_data
 )
 
 
@@ -33,9 +35,10 @@ from ui.admin_auth_dialog import request_admin_pin, change_admin_pin_dialog
 
 class DashboardUI:
 
-    def __init__(self, parent):
+    def __init__(self, parent, app=None):
 
         self.parent = parent
+        self.app = app
         self.frame = tk.Frame(
             parent,
             bg="#f5f5f5"
@@ -70,10 +73,26 @@ class DashboardUI:
 
         top_btn_frame.pack(pady=10)
 
+        save_usb_btn = tk.Button(
+            top_btn_frame,
+            text="💾 Save & Flush USB",
+            width=16,
+            height=2,
+            bg="#059669",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            command=self.save_and_flush_usb
+        )
+
+        save_usb_btn.pack(
+            side="left",
+            padx=4
+        )
+
         backup_btn = tk.Button(
             top_btn_frame,
-            text="Backup Database",
-            width=14,
+            text="Backup DB",
+            width=11,
             height=2,
             bg="#4a90e2",
             fg="white",
@@ -83,13 +102,13 @@ class DashboardUI:
 
         backup_btn.pack(
             side="left",
-            padx=5
+            padx=4
         )
 
         restore_btn = tk.Button(
             top_btn_frame,
-            text="Restore Database",
-            width=14,
+            text="Restore DB",
+            width=11,
             height=2,
             bg="#ff6666",
             fg="white",
@@ -99,13 +118,13 @@ class DashboardUI:
 
         restore_btn.pack(
             side="left",
-            padx=5
+            padx=4
         )
 
         z_report_btn = tk.Button(
             top_btn_frame,
-            text="📊 Daily Summary (Z-Report)",
-            width=22,
+            text="📊 Daily Summary",
+            width=15,
             height=2,
             bg="#28a745",
             fg="white",
@@ -115,13 +134,29 @@ class DashboardUI:
 
         z_report_btn.pack(
             side="left",
-            padx=5
+            padx=4
+        )
+
+        demo_data_btn = tk.Button(
+            top_btn_frame,
+            text="🎨 Load Demo Data",
+            width=15,
+            height=2,
+            bg="#6366f1",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            command=self.load_paints_hardware_demo_data
+        )
+
+        demo_data_btn.pack(
+            side="left",
+            padx=4
         )
 
         change_pin_btn = tk.Button(
             top_btn_frame,
-            text="🔒 Change PIN",
-            width=14,
+            text="🔒 PIN",
+            width=8,
             height=2,
             bg="#343a40",
             fg="white",
@@ -131,7 +166,7 @@ class DashboardUI:
 
         change_pin_btn.pack(
             side="left",
-            padx=5
+            padx=4
         )
 
         shop_details_btn = tk.Button(
@@ -147,13 +182,13 @@ class DashboardUI:
 
         shop_details_btn.pack(
             side="left",
-            padx=5
+            padx=4
         )
 
         audit_logs_btn = tk.Button(
             top_btn_frame,
-            text="🛡️ Audit Logs",
-            width=13,
+            text="🛡️ Audit",
+            width=8,
             height=2,
             bg="#007bff",
             fg="white",
@@ -163,13 +198,13 @@ class DashboardUI:
 
         audit_logs_btn.pack(
             side="left",
-            padx=5
+            padx=4
         )
 
         reset_btn = tk.Button(
             top_btn_frame,
             text="💣 Reset All Data",
-            width=15,
+            width=14,
             height=2,
             bg="#dc3545",
             fg="white",
@@ -179,7 +214,7 @@ class DashboardUI:
 
         reset_btn.pack(
             side="left",
-            padx=5
+            padx=4
         )
 
 
@@ -631,8 +666,9 @@ class DashboardUI:
             )
 
             parent = self.parent
+            app = self.app
             self.frame.destroy()
-            self.__init__(parent)
+            self.__init__(parent, app)
 
         except Exception as e:
             messagebox.showerror(
@@ -640,6 +676,81 @@ class DashboardUI:
                 f"An error occurred while resetting application data:\n{str(e)}",
                 parent=self.frame
             )
+
+    # =========================
+    # SAFE SAVE & FLUSH USB
+    # =========================
+
+    def save_and_flush_usb(self):
+        """Flushes database WAL to pen drive storage and confirms with 3-second toast."""
+        if self.app and hasattr(self.app, "trigger_pen_drive_save"):
+            self.app.trigger_pen_drive_save()
+        else:
+            ok, msg = safe_flush_pen_drive()
+            now_str = datetime.now().strftime("%I:%M:%S %p")
+            if ok:
+                try:
+                    record_audit_log("USB_SAVE", f"Database flushed to USB flash storage at {now_str}")
+                except Exception:
+                    pass
+                messagebox.showinfo(
+                    "💾 Saved to Pen Drive",
+                    f"All data has been safely flushed and committed to Pen Drive storage!\n\n"
+                    f"Time: {now_str}\nStatus: Safe to unplug or power down.",
+                    parent=self.frame
+                )
+            else:
+                messagebox.showerror(
+                    "Save Failed",
+                    f"Could not safely flush data to USB:\n{msg}",
+                    parent=self.frame
+                )
+
+    # =========================
+    # LOAD PAINTS & HARDWARE DEMO DATA
+    # =========================
+
+    def load_paints_hardware_demo_data(self):
+        """Seeds 50+ Paints & Hardware items, Delhi customer accounts, and sample invoices."""
+        confirm = messagebox.askyesno(
+            "Load Paints & Hardware Demo Data?",
+            "Do you want to load the pre-seeded Delhi Paints & Hardware catalog and ledger data?\n\n"
+            "This will add:\n"
+            "• 50+ products across 8 categories (Asian Paints, Berger, Enamel, Thinners, Putty, Locks, CPVC fittings, etc.)\n"
+            "• Sample contractor & painter customer profiles\n"
+            "• 3 Realistic sales invoices\n\n"
+            "Existing unique records will be preserved. Proceed?",
+            parent=self.frame
+        )
+        if not confirm:
+            return
+
+        ok, msg = seed_paints_and_hardware_demo_data()
+        if ok:
+            safe_flush_pen_drive()
+            try:
+                record_audit_log("LOAD_DEMO_DATA", "Loaded Delhi Paints & Hardware try-before-you-buy demo catalog.")
+            except Exception:
+                pass
+
+            messagebox.showinfo(
+                "Demo Data Loaded",
+                f"Paints & Hardware demo catalog loaded successfully!\n\n{msg}\n\n"
+                "The dashboard will now refresh.",
+                parent=self.frame
+            )
+            # Refresh dashboard
+            parent = self.parent
+            app = self.app
+            self.frame.destroy()
+            self.__init__(parent, app)
+        else:
+            messagebox.showerror(
+                "Demo Data Error",
+                f"Failed to seed demo data:\n{msg}",
+                parent=self.frame
+            )
+
 
     # ========================================
     # DAILY SALES & PROFIT SUMMARY (Z-REPORT)

@@ -30,15 +30,15 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'wokdens.com'),
-        StringStruct(u'FileDescription', u'BizDibba Diwali v3.0 - Wholesale & Retail Management'),
+        StringStruct(u'FileDescription', u'BizDabba PHWP - Paints & Hardware Wholesale & Retail Management'),
         StringStruct(u'FileVersion', u'3.0.0.0'),
-        StringStruct(u'InternalName', u'BizDibba_Diwali_v3.0'),
+        StringStruct(u'InternalName', u'BizDabba_PHWP'),
         StringStruct(u'LegalCopyright', u'Copyright (C) 2026 Powered by wokdens.com. All rights reserved.'),
-        StringStruct(u'OriginalFilename', u'BizDibba_Diwali_v3.0.exe'),
-        StringStruct(u'ProductName', u'BizDibba Diwali v3.0 by wokdens.com'),
+        StringStruct(u'OriginalFilename', u'BizDabba_PHWP.exe'),
+        StringStruct(u'ProductName', u'BizDabba PHWP by wokdens.com'),
         StringStruct(u'ProductVersion', u'3.0.0.0'),
         StringStruct(u'CompanyShortName', u'wokdens.com'),
-        StringStruct(u'ProductShortName', u'BizDibba Diwali v3.0')])
+        StringStruct(u'ProductShortName', u'BizDabba PHWP')])
 
       ]
     ),

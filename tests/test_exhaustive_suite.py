@@ -155,8 +155,8 @@ def run_exhaustive_suite():
              patch('ui.inventory_ui.request_admin_pin', return_value=True):
 
             app = MainWindow(root)
-            assert app.root.title() == "BizDibba Diwali v3.0 by wokdens.com", f"Title mismatch: {app.root.title()}"
-            print("  -> MainWindow title verified: 'BizDibba Diwali v3.0 by wokdens.com'")
+            assert app.root.title() == "BizDabba PHWP by wokdens.com", f"Title mismatch: {app.root.title()}"
+            print("  -> MainWindow title verified: 'BizDabba PHWP by wokdens.com'")
 
             # -------------------------------------------------------------
             # STAGE 6: Inventory CSV Import Permutations & Category Refresh
@@ -433,13 +433,59 @@ def run_exhaustive_suite():
             assert new_pid == 1, f"Expected first product after reset to have ID 1, got {new_pid}!"
             print("  -> Dashboard Reset All Data (without PIN) & Reset ID to 1 verified OK.")
 
+            # -------------------------------------------------------------
+            # STAGE 11: BizDabba PHWP Pen Drive Mode & Paints/Hardware Demo Data
+            # -------------------------------------------------------------
+            print("[STAGE 11/11] Testing BizDabba PHWP Pen Drive Mode & Demo Data...")
+
+            # 1. Zero Host Computer Footprint
+            localappdata = os.environ.get("LOCALAPPDATA", "")
+            if localappdata:
+                assert not config.AUTO_BACKUPS_DIR.lower().startswith(localappdata.lower()), \
+                    f"Auto-backups should reside on USB, not %LOCALAPPDATA%! Got {config.AUTO_BACKUPS_DIR}"
+            assert config.BASE_DIR in config.AUTO_BACKUPS_DIR, \
+                f"Auto-backups must be inside BASE_DIR! Got {config.AUTO_BACKUPS_DIR}"
+            print("  -> Zero host computer footprint verified (auto-backups strictly within BASE_DIR).")
+
+            # 2. Seed Delhi Paints & Hardware Demo Data via Dashboard
+            with patch('tkinter.messagebox.askyesno', return_value=True):
+                dash_ui.load_paints_hardware_demo_data()
+
+            total_prods = database.get_total_products()
+            assert total_prods >= 50, f"Expected 50+ demo products, got {total_prods}"
+            categories = database.get_all_categories()
+            assert len(categories) >= 7, f"Expected 7+ categories, got {len(categories)}"
+            assert "PAINTS - EMULSION & EXTERIOR" in categories, "Missing PAINTS - EMULSION & EXTERIOR category"
+            assert "HARDWARE - FASTENERS & NAILS" in categories, "Missing HARDWARE - FASTENERS & NAILS category"
+
+            total_custs = database.get_total_customers()
+            assert total_custs >= 4, f"Expected 4+ demo customers, got {total_custs}"
+            print(f"  -> Paints & Hardware demo catalog seeded: {total_prods} products across {len(categories)} categories.")
+
+            # 3. Pen Drive Safe Flush & Checkpoint
+            ok_flush, msg_flush = database.safe_flush_pen_drive()
+            assert ok_flush is True, f"safe_flush_pen_drive failed: {msg_flush}"
+            print("  -> Pen Drive safe flush (WAL checkpoint & auto-backup) verified OK.")
+
+            # 4. Global Pen Drive Save Trigger (Ctrl+S Simulation)
+            app.trigger_pen_drive_save()
+            print("  -> Global Pen Drive Save (Ctrl+S) triggered & executed cleanly.")
+
+            # 5. Verify Demo Catalog CSV file
+            csv_demo = os.path.join(os.path.dirname(__file__), "..", "DEMO_PAINTS_HARDWARE_CATALOG.csv")
+            assert os.path.isfile(csv_demo), f"DEMO_PAINTS_HARDWARE_CATALOG.csv missing at {csv_demo}"
+            with open(csv_demo, "r", encoding="utf-8") as f:
+                csv_lines = [l for l in f if l.strip()]
+            assert len(csv_lines) >= 51, f"Expected 51+ lines in demo CSV, got {len(csv_lines)}"
+            print(f"  -> DEMO_PAINTS_HARDWARE_CATALOG.csv verified with {len(csv_lines)-1} products.")
+
         root.destroy()
     finally:
         database.DATABASE_PATH = old_db_path
         shutil_rmtree_safe(temp_dir)
 
     print("=" * 70)
-    print("  ALL 10 EXHAUSTIVE STAGES PASSED WITH ZERO ERRORS (100% SUCCESS)!")
+    print("  ALL 11 EXHAUSTIVE STAGES PASSED WITH ZERO ERRORS (100% SUCCESS)!")
     print("=" * 70)
 
 def shutil_rmtree_safe(path):

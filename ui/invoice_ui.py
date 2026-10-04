@@ -279,7 +279,11 @@ def generate_thermal_receipt_pdf(
     curr_y -= 10
     pdf.setFont("Helvetica", 6.5)
     pdf.setFillColorRGB(0, 0, 0)
-    pdf.drawCentredString(width / 2, curr_y, "GST as per applicable. Order against PO.")
+    pdf.drawCentredString(width / 2, curr_y, "Goods exchangeable in 7 days in sealed pack. No return on tinted paints.")
+
+    curr_y -= 8
+    pdf.setFont("Helvetica", 6.0)
+    pdf.drawCentredString(width / 2, curr_y, "GST extra as applicable. E.&O.E.")
 
     curr_y -= 9
     pdf.setFont("Helvetica-Bold", 7.0)

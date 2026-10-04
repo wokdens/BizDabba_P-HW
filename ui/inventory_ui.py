@@ -285,20 +285,25 @@ class InventoryUI:
         self.unit_entry = ttk.Combobox(
             form_frame,
             values=(
+                "Bucket",
+                "Can",
+                "Tin",
+                "Ltr",
+                "Bag",
+                "Kg",
                 "Pcs",
-                "Coil",
-                "Mtr",
                 "Box",
-                "Nos",
-                "Bundle",
-                "Length",
+                "Pair",
                 "Set",
+                "Sheet",
+                "Roll",
+                "Length",
                 "Pkt",
-                "Roll"
+                "Nos"
             ),
             width=27
         )
-        self.unit_entry.set("Pcs")
+        self.unit_entry.set("Bucket")
 
         self.unit_entry.grid(
             row=5,

@@ -37,6 +37,7 @@ Write-Host "[1/4] Found Inno Setup Compiler: $IsccPath" -ForegroundColor Green
 
 # 2. Sign main Executable
 $MainExeCandidates = @(
+    (Join-Path $ProjectDir "dist\BizDabba_PHWP\BizDabba_PHWP.exe"),
     (Join-Path $ProjectDir "dist\BizDibba_Diwali_v3.0\BizDibba_Diwali_v3.0.exe"),
     (Join-Path $ProjectDir "dist\BizDibba_Diwali_v2.0\BizDibba_Diwali_v2.0.exe"),
     (Join-Path $ProjectDir "dist\BizDabba_Diwali\BizDabba_Diwali.exe"),

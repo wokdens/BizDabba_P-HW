@@ -14,12 +14,8 @@ DB_DIR = os.path.join(BASE_DIR, "database")
 INVOICES_DIR = os.path.join(BASE_DIR, "invoices")
 BACKUPS_DIR = os.path.join(BASE_DIR, "backups")
 
-# Dedicated rolling auto-backups directory in LocalAppData (safe from application directory changes)
-local_app_data = os.environ.get("LOCALAPPDATA")
-if local_app_data:
-    AUTO_BACKUPS_DIR = os.path.join(local_app_data, "BizDibba_Diwali_v3.0", "Backups")
-else:
-    AUTO_BACKUPS_DIR = os.path.join(BACKUPS_DIR, "auto")
+# Dedicated rolling auto-backups directory strictly on Pen Drive (Zero Host Computer Footprint)
+AUTO_BACKUPS_DIR = os.path.join(BACKUPS_DIR, "auto")
 
 os.makedirs(DB_DIR, exist_ok=True)
 os.makedirs(INVOICES_DIR, exist_ok=True)
@@ -28,10 +24,14 @@ os.makedirs(AUTO_BACKUPS_DIR, exist_ok=True)
 
 DATABASE_PATH = os.path.join(DB_DIR, "business.db")
 
-# Default Shop Profile
-SHOP_NAME = "Electrical Wholesale & Retail"
-SHOP_PHONE = "9876543210"
-SHOP_ADDRESS = "Wholesale Electrical Market"
+# Default Shop Profile (Delhi-based Paints & Hardware)
+SHOP_NAME = "Delhi Paints & Hardware Store"
+SHOP_PHONE = "+91-9811234567"
+SHOP_ADDRESS = "Shop No. 14, Hauz Qazi / Chawri Bazar, Delhi - 110006"
+
+# Application Branding
+APP_TITLE = "BizDabba PHWP by wokdens.com"
+APP_SUBTITLE = "Paints & Hardware Wholesale & Retail Management"
 
 # Master Password for Exported CSV & Data Archives
 CSV_MASTER_EXPORT_PASSWORD = "Wokdens@CSV#2026"

@@ -26,12 +26,14 @@ if sys.platform == "win32":
         except Exception:
             pass
 
+from config import APP_TITLE
+
 # =========================
 # SINGLE INSTANCE LOCK
 # =========================
 _app_mutex = None
 
-def enforce_single_instance(app_title="BizDibba Diwali v3.0 by wokdens.com"):
+def enforce_single_instance(app_title=APP_TITLE):
     global _app_mutex
     if sys.platform == "win32":
         try:
@@ -40,7 +42,7 @@ def enforce_single_instance(app_title="BizDibba Diwali v3.0 by wokdens.com"):
             kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
             kernel32.GetLastError.restype = wintypes.DWORD
 
-            _app_mutex = kernel32.CreateMutexW(None, False, r"Local\Wokdens_BizDibba_Diwali_v3_SingleInstance_Mutex")
+            _app_mutex = kernel32.CreateMutexW(None, False, r"Local\Wokdens_BizDabba_PHWP_SingleInstance_Mutex")
             if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
                 user32 = ctypes.windll.user32
                 hwnd = user32.FindWindowW(None, app_title)
@@ -51,7 +53,7 @@ def enforce_single_instance(app_title="BizDibba Diwali v3.0 by wokdens.com"):
         except Exception as e:
             print(f"Single instance check notice: {e}")
 
-enforce_single_instance("BizDibba Diwali v3.0 by wokdens.com")
+enforce_single_instance(APP_TITLE)
 
 # =========================
 # CREATE DATABASE TABLES & MIGRATIONS

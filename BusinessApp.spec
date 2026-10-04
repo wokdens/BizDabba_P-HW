@@ -22,7 +22,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='BizDibba_Diwali_v3.0',
+    name='BizDabba_PHWP',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -43,5 +43,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='BizDibba_Diwali_v3.0',
+    name='BizDabba_PHWP',
 )

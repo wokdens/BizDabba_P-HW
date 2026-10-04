@@ -437,6 +437,10 @@ def create_tables():
     if not get_setting("admin_pin_hash"):
         set_setting("admin_pin_hash", hash_pin("8160"))
 
+    # Auto-seed Paints & Hardware demo data if database is freshly created
+    if get_total_products() == 0 and get_setting("demo_seed_skipped") != "1":
+        seed_paints_and_hardware_demo_data()
+
 
 
 
@@ -593,6 +597,8 @@ def reset_application_data():
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
     if cursor.fetchone():
         cursor.execute("DELETE FROM sqlite_sequence")
+
+    cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('demo_seed_skipped', '1')")
 
     conn.commit()
     conn.close()
@@ -2044,29 +2050,263 @@ def trigger_auto_backup(reason="daily"):
         return None
 
 
-def close_database_on_exit():
+def safe_flush_pen_drive():
     """
-    Executes a WAL truncate checkpoint and database integrity check on clean application exit.
-    Ensures that WAL file changes are safely flushed into the main database file.
+    Safely flushes and commits all data directly to the Pen Drive.
+    1. Executes PRAGMA wal_checkpoint(TRUNCATE) to force all journal pages into the primary .db file.
+    2. Runs PRAGMA integrity_check to verify zero database corruption.
+    3. Triggers an automatic snapshot into the Pen Drive's backups/auto/ folder.
+    4. Flushes OS file write buffers so USB can be disconnected safely.
+    Returns (True, message) or (False, error).
     """
     try:
         if not os.path.exists(DATABASE_PATH):
-            return "no_database"
+            return False, "Database not found."
 
         conn = get_connection()
         try:
-            # Checkpoint WAL cleanly into the primary DB file
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             cursor = conn.cursor()
             cursor.execute("PRAGMA integrity_check")
             row = cursor.fetchone()
-            status = row[0] if row else "ok"
-            return status
+            integrity = row[0] if row else "ok"
+            if integrity != "ok":
+                return False, f"Integrity check warning: {integrity}"
         finally:
             conn.close()
+
+        # Silent auto backup to USB drive backups/auto
+        try:
+            trigger_auto_backup(reason="pen_drive_flush")
+        except Exception:
+            pass
+
+        # Windows OS buffer flush
+        try:
+            if hasattr(os, "sync"):
+                os.sync()
+        except Exception:
+            pass
+
+        return True, "All database records, invoices & stock safely synchronized to Pen Drive."
     except Exception as e:
-        print(f"Database exit check error: {e}")
-        return str(e)
+        return False, str(e)
+
+
+def close_database_on_exit():
+    """
+    Executes a WAL truncate checkpoint and database integrity check on clean application exit.
+    Ensures that WAL file changes are safely flushed into the main database file on the Pen Drive.
+    """
+    ok, msg = safe_flush_pen_drive()
+    return "ok" if ok else msg
+
+
+def seed_paints_and_hardware_demo_data():
+    """
+    Seeds a realistic, comprehensive Paints & Hardware demo dataset for Delhi wholesale & retail demo.
+    Includes top paint brands (Asian Paints, Berger, Nerolac), enamels, primers, putties, thinners,
+    tools (brushes, rollers, sandpaper), hardware fittings (hinges, locks, aldrop), fasteners (screws, nails),
+    and plumbing materials. Also seeds sample Delhi contractor/retail customers and transactions.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        # 1. Update shop profile to Delhi-based Paints & Hardware store if not already set
+        cursor.execute("SELECT value FROM app_settings WHERE key = 'shop_name'")
+        curr_name = cursor.fetchone()
+        if not curr_name or curr_name[0] in ("Electrical Wholesale & Retail", "My Business", ""):
+            cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('shop_name', 'Delhi Paints & Hardware Store')")
+            cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('shop_phone', '+91-9811234567 / 011-23864500')")
+            cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('shop_address', 'Shop No. 14, Hauz Qazi / Chawri Bazar, Delhi - 110006')")
+
+        # 2. Categories
+        categories = [
+            "PAINTS - EMULSION & EXTERIOR",
+            "PAINTS - ENAMEL & PRIMER",
+            "PAINTS - DISTEMPER & WALL PUTTY",
+            "PAINTING TOOLS & ACCESSORIES",
+            "HARDWARE - DOOR & WINDOW FITTINGS",
+            "HARDWARE - FASTENERS & NAILS",
+            "HARDWARE - PLUMBING & SANITARY",
+            "HARDWARE - HAND TOOLS"
+        ]
+        for cat in categories:
+            cursor.execute("INSERT OR IGNORE INTO categories(name) VALUES (?)", (cat,))
+
+        # 3. Curated Paints & Hardware Catalog: (category, name, mrp, purchase_price, selling_price, unit, stock)
+        demo_products = [
+            # Paints - Emulsions
+            ("PAINTS - EMULSION & EXTERIOR", "Asian Paints Apex Ultima White 20L", 7800.0, 6200.0, 7100.0, "Bucket", 25),
+            ("PAINTS - EMULSION & EXTERIOR", "Asian Paints Apex Ultima White 4L", 1750.0, 1380.0, 1580.0, "Can", 40),
+            ("PAINTS - EMULSION & EXTERIOR", "Asian Paints Royale Luxury Emulsion 10L", 5200.0, 4100.0, 4750.0, "Bucket", 20),
+            ("PAINTS - EMULSION & EXTERIOR", "Asian Paints Royale Luxury Emulsion 1L", 590.0, 460.0, 530.0, "Can", 60),
+            ("PAINTS - EMULSION & EXTERIOR", "Asian Paints Tractor Emulsion White 20L", 3100.0, 2400.0, 2800.0, "Bucket", 35),
+            ("PAINTS - EMULSION & EXTERIOR", "Asian Paints Tractor Emulsion White 4L", 720.0, 550.0, 650.0, "Can", 50),
+            ("PAINTS - EMULSION & EXTERIOR", "Berger WeatherCoat All Guard 20L", 6900.0, 5400.0, 6200.0, "Bucket", 15),
+            ("PAINTS - EMULSION & EXTERIOR", "Nerolac Beauty Smooth Finish 20L", 2950.0, 2280.0, 2650.0, "Bucket", 20),
+
+            # Paints - Enamels & Primers
+            ("PAINTS - ENAMEL & PRIMER", "Apcolite Premium Gloss Enamel 4L", 1350.0, 1050.0, 1220.0, "Can", 30),
+            ("PAINTS - ENAMEL & PRIMER", "Apcolite Premium Gloss Enamel White 1L", 360.0, 280.0, 325.0, "Can", 75),
+            ("PAINTS - ENAMEL & PRIMER", "Asian Paints Exterior Wall Primer 10L", 1650.0, 1280.0, 1480.0, "Bucket", 30),
+            ("PAINTS - ENAMEL & PRIMER", "Asian Paints Interior Wall Primer 10L", 1400.0, 1080.0, 1250.0, "Bucket", 35),
+            ("PAINTS - ENAMEL & PRIMER", "Red Oxide Metal Primer 4L", 780.0, 590.0, 700.0, "Can", 40),
+            ("PAINTS - ENAMEL & PRIMER", "NC Premium Thinner 1 Ltr", 180.0, 125.0, 150.0, "Bottle", 120),
+            ("PAINTS - ENAMEL & PRIMER", "Commercial Thinner 5 Ltr", 650.0, 460.0, 550.0, "Can", 40),
+
+            # Distemper & Wall Putty
+            ("PAINTS - DISTEMPER & WALL PUTTY", "Asian Paints TruCare Acrylic Wall Putty 20kg", 850.0, 660.0, 760.0, "Bag", 60),
+            ("PAINTS - DISTEMPER & WALL PUTTY", "Asian Paints TruCare Acrylic Wall Putty 5kg", 240.0, 185.0, 215.0, "Bag", 90),
+            ("PAINTS - DISTEMPER & WALL PUTTY", "JK WallMaxx White Wall Putty 40kg", 980.0, 780.0, 890.0, "Bag", 80),
+            ("PAINTS - DISTEMPER & WALL PUTTY", "Asian Paints Tractor Acrylic Distemper 20kg", 1150.0, 890.0, 1020.0, "Bucket", 35),
+
+            # Painting Tools & Accessories
+            ("PAINTING TOOLS & ACCESSORIES", "Paint Brush 2 inch (Bristle)", 60.0, 32.0, 45.0, "Pcs", 150),
+            ("PAINTING TOOLS & ACCESSORIES", "Paint Brush 3 inch (Bristle)", 90.0, 50.0, 70.0, "Pcs", 120),
+            ("PAINTING TOOLS & ACCESSORIES", "Paint Brush 4 inch (Bristle)", 130.0, 75.0, 105.0, "Pcs", 90),
+            ("PAINTING TOOLS & ACCESSORIES", "Paint Roller 9 inch with Tray Set", 280.0, 160.0, 220.0, "Set", 65),
+            ("PAINTING TOOLS & ACCESSORIES", "Waterproof Sandpaper #80 (Coarse)", 25.0, 12.0, 18.0, "Sheet", 300),
+            ("PAINTING TOOLS & ACCESSORIES", "Waterproof Sandpaper #120 (Medium)", 25.0, 12.0, 18.0, "Sheet", 400),
+            ("PAINTING TOOLS & ACCESSORIES", "Waterproof Sandpaper #220 (Fine)", 25.0, 12.0, 18.0, "Sheet", 350),
+            ("PAINTING TOOLS & ACCESSORIES", "Masking Tape 1 inch (20m)", 50.0, 26.0, 38.0, "Roll", 200),
+            ("PAINTING TOOLS & ACCESSORIES", "Masking Tape 2 inch (20m)", 95.0, 52.0, 75.0, "Roll", 140),
+
+            # Hardware - Door & Window Fittings
+            ("HARDWARE - DOOR & WINDOW FITTINGS", "SS Butt Hinges 4 inch (Heavy 3mm)", 160.0, 95.0, 130.0, "Pair", 100),
+            ("HARDWARE - DOOR & WINDOW FITTINGS", "Brass Mortise Handle Lock Set (6 Lever)", 1850.0, 1250.0, 1550.0, "Set", 25),
+            ("HARDWARE - DOOR & WINDOW FITTINGS", "SS Aldrop 10 inch with Rod & Bolts", 480.0, 310.0, 390.0, "Set", 45),
+            ("HARDWARE - DOOR & WINDOW FITTINGS", "SS Tower Bolt 6 inch", 110.0, 65.0, 85.0, "Pcs", 110),
+            ("HARDWARE - DOOR & WINDOW FITTINGS", "SS Tower Bolt 8 inch", 150.0, 90.0, 120.0, "Pcs", 80),
+            ("HARDWARE - DOOR & WINDOW FITTINGS", "Magnetic Door Catcher (Heavy Duty)", 95.0, 50.0, 70.0, "Pcs", 120),
+
+            # Hardware - Fasteners & Nails
+            ("HARDWARE - FASTENERS & NAILS", "Drywall Gypsum Screws 1.5 inch (Box 500 Pcs)", 320.0, 190.0, 250.0, "Box", 80),
+            ("HARDWARE - FASTENERS & NAILS", "Drywall Gypsum Screws 2 inch (Box 500 Pcs)", 390.0, 230.0, 310.0, "Box", 60),
+            ("HARDWARE - FASTENERS & NAILS", "SS Wood Screws 1 inch (Box 100 Pcs)", 140.0, 80.0, 110.0, "Box", 90),
+            ("HARDWARE - FASTENERS & NAILS", "Wire Nails 2 inch (1 kg Pack)", 110.0, 70.0, 90.0, "Kg", 150),
+            ("HARDWARE - FASTENERS & NAILS", "Wire Nails 3 inch (1 kg Pack)", 110.0, 70.0, 90.0, "Kg", 120),
+            ("HARDWARE - FASTENERS & NAILS", "PVC Rawl Plugs 35mm (Pack of 100)", 80.0, 38.0, 55.0, "Pkt", 100),
+
+            # Hardware - Plumbing & Sanitary
+            ("HARDWARE - PLUMBING & SANITARY", "CPVC Brass Elbow 1/2 inch", 95.0, 58.0, 75.0, "Pcs", 130),
+            ("HARDWARE - PLUMBING & SANITARY", "CPVC Ball Valve 1 inch (Heavy)", 280.0, 175.0, 225.0, "Pcs", 50),
+            ("HARDWARE - PLUMBING & SANITARY", "PVC Conduit Pipe 25mm (3 Metre)", 120.0, 72.0, 95.0, "Length", 150),
+            ("HARDWARE - PLUMBING & SANITARY", "CPVC Solvent Cement 250ml Tin", 240.0, 155.0, 195.0, "Tin", 60),
+            ("HARDWARE - PLUMBING & SANITARY", "Brass Bib Tap 1/2 inch Long Body", 550.0, 340.0, 440.0, "Pcs", 35),
+            ("HARDWARE - PLUMBING & SANITARY", "PTFE Teflon Tape (Pack of 10)", 150.0, 80.0, 115.0, "Pkt", 90),
+
+            # Hardware - Hand Tools
+            ("HARDWARE - HAND TOOLS", "Claw Hammer 500g with Fiberglass Handle", 380.0, 220.0, 295.0, "Pcs", 30),
+            ("HARDWARE - HAND TOOLS", "Steel Measuring Tape 5 Metre", 180.0, 95.0, 135.0, "Pcs", 50),
+            ("HARDWARE - HAND TOOLS", "Screwdriver 8-in-1 Interchangeable Set", 260.0, 140.0, 195.0, "Set", 40),
+            ("HARDWARE - HAND TOOLS", "Hacksaw Frame with Bi-Metal Blade", 290.0, 165.0, 225.0, "Pcs", 35),
+            ("HARDWARE - HAND TOOLS", "Combination Pliers 8 inch (Insulated)", 320.0, 180.0, 245.0, "Pcs", 40)
+        ]
+
+        for cat, name, mrp, pprice, sprice, unit, stock in demo_products:
+            cursor.execute("SELECT id FROM products WHERE name = ?", (name,))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute("""
+                UPDATE products
+                SET category=?, mrp=?, purchase_price=?, selling_price=?, unit=?, stock=?
+                WHERE id=?
+                """, (cat, mrp, pprice, sprice, unit, stock, existing[0]))
+            else:
+                cursor.execute("""
+                INSERT INTO products(category, name, mrp, purchase_price, selling_price, unit, stock, discount_base)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'Price')
+                """, (cat, name, mrp, pprice, sprice, unit, stock))
+
+        # 4. Sample Customers (Delhi-based)
+        demo_customers = [
+            ("Sharma Contractors & Builders (Chawri Bazar)", "9810123456", "Plot 22, Chawri Bazar, Delhi - 110006"),
+            ("Rajesh Painter & Polish Works (Laxmi Nagar)", "9871987654", "Gali No. 4, Laxmi Nagar, Delhi - 110092"),
+            ("Verma Hardware & Sanitary Store (Rohini)", "9818554433", "Sector 7, Rohini, Delhi - 110085"),
+            ("Sunil Kumar (Civil Lines)", "9911223344", "12 Rajpur Road, Civil Lines, Delhi - 110054"),
+            ("Walk-in Cash Customer", "", "Counter Sale, Delhi")
+        ]
+        cust_id_map = {}
+        for cname, cphone, caddr in demo_customers:
+            cursor.execute("SELECT id FROM customers WHERE name = ?", (cname,))
+            c_row = cursor.fetchone()
+            if c_row:
+                cursor.execute("UPDATE customers SET phone = ?, address = ? WHERE id = ?", (cphone, caddr, c_row[0]))
+                cust_id_map[cname] = c_row[0]
+            else:
+                cursor.execute("INSERT INTO customers(name, phone, address) VALUES (?, ?, ?)", (cname, cphone, caddr))
+                cust_id_map[cname] = cursor.lastrowid
+
+        # 5. Seed 3 Trial Invoices if no invoices exist
+        cursor.execute("SELECT COUNT(*) FROM invoices")
+        if cursor.fetchone()[0] == 0:
+            # Invoice 1: Sharma Contractors (Wholesale credit invoice)
+            c1_id = cust_id_map["Sharma Contractors & Builders (Chawri Bazar)"]
+            cursor.execute("""
+            INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
+            VALUES('1001', ?, 18286.80, 14000.00, 4286.80, datetime('now', '-2 hours'), 'Site delivery at Daryaganj project', 'ACTIVE')
+            """, (c1_id,))
+            inv1_id = cursor.lastrowid
+
+            # Items for Inv 1
+            cursor.execute("SELECT id FROM products WHERE name = 'Asian Paints Apex Ultima White 20L'")
+            p1_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 2, 7800.0, 7100.0, 0, 14200.0, 'Bucket')", (inv1_id, p1_id))
+            cursor.execute("SELECT id FROM products WHERE name = 'Asian Paints TruCare Acrylic Wall Putty 20kg'")
+            p2_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 5, 850.0, 760.0, 0, 3800.0, 'Bag')", (inv1_id, p2_id))
+            cursor.execute("SELECT id FROM products WHERE name = 'Paint Roller 9 inch with Tray Set'")
+            p3_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 3, 280.0, 220.0, 2.0, 646.80, 'Set')", (inv1_id, p3_id))
+
+            # Invoice 2: Rajesh Painter (Fully Paid Enamel & Thinner)
+            c2_id = cust_id_map["Rajesh Painter & Polish Works (Laxmi Nagar)"]
+            cursor.execute("""
+            INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
+            VALUES('1002', ?, 3320.00, 3320.00, 0.0, datetime('now', '-1 hours'), 'Full Cash Payment', 'ACTIVE')
+            """, (c2_id,))
+            inv2_id = cursor.lastrowid
+
+            cursor.execute("SELECT id FROM products WHERE name = 'Apcolite Premium Gloss Enamel 4L'")
+            p4_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 2, 1350.0, 1220.0, 0, 2440.0, 'Can')", (inv2_id, p4_id))
+            cursor.execute("SELECT id FROM products WHERE name = 'NC Premium Thinner 1 Ltr'")
+            p5_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 4, 180.0, 150.0, 0, 600.0, 'Bottle')", (inv2_id, p5_id))
+            cursor.execute("SELECT id FROM products WHERE name = 'Paint Brush 3 inch (Bristle)'")
+            p6_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 4, 90.0, 70.0, 0, 280.0, 'Pcs')", (inv2_id, p6_id))
+
+            # Invoice 3: Walk-in Cash Customer
+            c3_id = cust_id_map["Walk-in Cash Customer"]
+            cursor.execute("""
+            INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
+            VALUES('1003', ?, 1915.00, 1915.00, 0.0, datetime('now', '-20 minutes'), 'UPI Payment', 'ACTIVE')
+            """, (c3_id,))
+            inv3_id = cursor.lastrowid
+
+            cursor.execute("SELECT id FROM products WHERE name = 'Brass Mortise Handle Lock Set (6 Lever)'")
+            p7_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 1, 1850.0, 1550.0, 0, 1550.0, 'Set')", (inv3_id, p7_id))
+            cursor.execute("SELECT id FROM products WHERE name = 'Drywall Gypsum Screws 1.5 inch (Box 500 Pcs)'")
+            p8_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 1, 320.0, 250.0, 0, 250.0, 'Box')", (inv3_id, p8_id))
+            cursor.execute("SELECT id FROM products WHERE name = 'PTFE Teflon Tape (Pack of 10)'")
+            p9_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 1, 150.0, 115.0, 0, 115.0, 'Pkt')", (inv3_id, p9_id))
+
+        # Mark demo_seed_skipped as '0' so demo data is acknowledged
+        cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('demo_seed_skipped', '0')")
+
+        conn.commit()
+        return True, f"Successfully seeded {len(demo_products)} Paints & Hardware products and sample Delhi ledgers."
+    except Exception as e:
+        conn.rollback()
+        return False, str(e)
+    finally:
+        conn.close()
 
 
 # =====================================

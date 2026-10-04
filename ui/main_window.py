@@ -14,7 +14,7 @@ class MainWindow:
 
         self.root = root
 
-        self.root.title("BizDibba Diwali v3.0 by wokdens.com")
+        self.root.title("BizDabba PHWP by wokdens.com")
 
         self.root.geometry("1200x780")
         self.root.minsize(1024, 650)
@@ -30,18 +30,18 @@ class MainWindow:
         footer_frame = tk.Frame(root, bg="#1e222d", height=32)
         footer_frame.pack(side="bottom", fill="x")
 
-        status_lbl = tk.Label(
+        self.status_lbl = tk.Label(
             footer_frame,
-            text=" ● Offline Mode | Ready ",
+            text=" 🟢 Pen Drive Mode | Ready ",
             font=("Arial", 9, "bold"),
             bg="#1e222d",
             fg="#28a745"
         )
-        status_lbl.pack(side="left", padx=15, pady=5)
+        self.status_lbl.pack(side="left", padx=15, pady=5)
 
         center_lbl = tk.Label(
             footer_frame,
-            text="Electrical Wholesale & Retail Management",
+            text="Paints & Hardware Wholesale & Retail Management",
             font=("Arial", 9),
             bg="#1e222d",
             fg="#a0aab8"
@@ -166,8 +166,25 @@ class MainWindow:
         )
 
         # =========================
-        # 1-CLICK ROLE TOGGLE (STAFF / ADMIN)
+        # 1-CLICK ROLE TOGGLE & SAFE SAVE (PEN DRIVE)
         # =========================
+        self.safe_save_btn = tk.Button(
+            menu_frame,
+            text="💾 Save to Pen Drive (Ctrl+S)",
+            font=("Arial", 10, "bold"),
+            bg="#059669",
+            fg="white",
+            activebackground="#047857",
+            activeforeground="white",
+            padx=10,
+            pady=4,
+            command=self.trigger_pen_drive_save
+        )
+        self.safe_save_btn.pack(
+            side="right",
+            padx=6
+        )
+
         self.role_toggle_btn = tk.Button(
             menu_frame,
             text="👤 Staff Mode [🔒 Unlock Admin]",
@@ -180,7 +197,7 @@ class MainWindow:
         )
         self.role_toggle_btn.pack(
             side="right",
-            padx=10
+            padx=6
         )
 
         from ui.admin_auth_dialog import register_role_listener, is_admin_mode
@@ -205,6 +222,10 @@ class MainWindow:
             padx=20,
             pady=12
         )
+
+        # Global Keyboard Shortcut for Safe Pen Drive Save
+        self.root.bind_all("<Control-s>", lambda e: self.trigger_pen_drive_save())
+        self.root.bind_all("<Control-S>", lambda e: self.trigger_pen_drive_save())
 
         # Default page
         self.current_ui = None
@@ -329,7 +350,7 @@ class MainWindow:
             self.dashboard_btn
         )
 
-        self.current_ui = DashboardUI(self.content_frame)
+        self.current_ui = DashboardUI(self.content_frame, app=self)
 
 
     # =========================
@@ -393,5 +414,123 @@ class MainWindow:
             "Treeview.Heading",
             background=[("active", "#dee2e6")]
         )
+
+    # =========================
+    # SAFE PEN DRIVE SAVE & SYNC
+    # =========================
+
+    def trigger_pen_drive_save(self, event=None):
+        """Flushes SQLite WAL pages, commits OS disk buffers, and displays a 3-second auto-dismissing toast."""
+        from database import safe_flush_pen_drive
+        from datetime import datetime
+
+        # If current UI has unsaved pending field states, let it commit them
+        if self.current_ui and hasattr(self.current_ui, "save_state"):
+            try:
+                self.current_ui.save_state()
+            except Exception:
+                pass
+
+        ok, msg = safe_flush_pen_drive()
+        now_str = datetime.now().strftime("%I:%M:%S %p")
+
+        if ok:
+            if hasattr(self, "status_lbl") and self.status_lbl:
+                self.status_lbl.config(
+                    text=f" 🟢 USB Synced & Safe ({now_str}) ",
+                    fg="#28a745"
+                )
+            self.show_save_toast(success=True, time_str=now_str)
+        else:
+            self.show_save_toast(success=False, error_msg=msg)
+
+    def show_save_toast(self, success=True, time_str="", error_msg=""):
+        """Shows a clean, high-visibility, auto-dismissing toast popup for 3 seconds."""
+        toast = tk.Toplevel(self.root)
+        toast.overrideredirect(True)
+        toast.attributes("-topmost", True)
+
+        bg_color = "#065f46" if success else "#991b1b"
+        border_color = "#34d399" if success else "#f87171"
+
+        container = tk.Frame(
+            toast,
+            bg=bg_color,
+            bd=2,
+            relief="solid",
+            highlightthickness=1,
+            highlightbackground=border_color
+        )
+        container.pack(fill="both", expand=True)
+
+        title_text = "💾 DATA SAFELY SAVED TO PEN DRIVE!" if success else "⚠️ SAVE ERROR"
+        body_text = (
+            f"All records, stock & invoices committed to USB storage.\n"
+            f"Synced at {time_str} • Safe to unplug Pen Drive or exit.\n"
+            f"Auto-closing in 3 seconds... (Click to close)"
+            if success else
+            f"Failed to flush data to USB: {error_msg}\nPlease do not unplug the drive."
+        )
+
+        tk.Label(
+            container,
+            text=title_text,
+            font=("Arial", 12, "bold"),
+            bg=bg_color,
+            fg="#ffffff",
+            padx=20,
+            pady=6
+        ).pack(anchor="center")
+
+        msg_lbl = tk.Label(
+            container,
+            text=body_text,
+            font=("Arial", 10),
+            bg=bg_color,
+            fg="#e6fffa" if success else "#fee2e2",
+            padx=20,
+            pady=4,
+            justify="center"
+        )
+        msg_lbl.pack(anchor="center")
+
+        # Position centered on main window
+        toast.update_idletasks()
+        w = 460
+        h = 96
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_w = self.root.winfo_width()
+        root_h = self.root.winfo_height()
+
+        x = root_x + max(0, (root_w - w) // 2)
+        y = root_y + max(40, (root_h - h) // 4)
+        toast.geometry(f"{w}x{h}+{x}+{y}")
+
+        # Allow instant dismiss on click or keys
+        def close_toast(e=None):
+            if toast.winfo_exists():
+                toast.destroy()
+
+        toast.bind("<Button-1>", close_toast)
+        container.bind("<Button-1>", close_toast)
+        msg_lbl.bind("<Button-1>", close_toast)
+        toast.bind("<Escape>", close_toast)
+        toast.bind("<Return>", close_toast)
+
+        # 3-second countdown
+        def countdown(remaining):
+            if not toast.winfo_exists():
+                return
+            if remaining <= 0:
+                toast.destroy()
+            else:
+                if success:
+                    msg_lbl.config(
+                        text=f"All records, stock & invoices committed to USB storage.\nSynced at {time_str} • Safe to unplug Pen Drive or exit.\nAuto-closing in {remaining}s... (Click to close)"
+                    )
+                toast.after(1000, lambda: countdown(remaining - 1))
+
+        toast.after(1000, lambda: countdown(2))
 
 
