@@ -4,7 +4,7 @@ import time
 import hashlib
 from datetime import datetime, timedelta
 
-from config import DATABASE_PATH, AUTO_BACKUPS_DIR
+from config import DATABASE_PATH, AUTO_BACKUPS_DIR, INVOICES_DIR
 
 
 
@@ -2102,7 +2102,7 @@ def close_database_on_exit():
     return "ok" if ok else msg
 
 
-def seed_paints_and_hardware_demo_data():
+def seed_paints_and_hardware_demo_data(force=False):
     """
     Seeds a realistic, comprehensive Paints & Hardware demo dataset for Delhi wholesale & retail demo.
     Includes top paint brands (Asian Paints, Berger, Nerolac), enamels, primers, putties, thinners,
@@ -2220,14 +2220,26 @@ def seed_paints_and_hardware_demo_data():
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Price')
                 """, (cat, name, mrp, pprice, sprice, unit, stock))
 
-        # 4. Sample Customers (Delhi-based)
+        # 4. Sample Customers (Delhi-based - exactly 10 profiles)
         demo_customers = [
             ("Sharma Contractors & Builders (Chawri Bazar)", "9810123456", "Plot 22, Chawri Bazar, Delhi - 110006"),
             ("Rajesh Painter & Polish Works (Laxmi Nagar)", "9871987654", "Gali No. 4, Laxmi Nagar, Delhi - 110092"),
             ("Verma Hardware & Sanitary Store (Rohini)", "9818554433", "Sector 7, Rohini, Delhi - 110085"),
-            ("Sunil Kumar (Civil Lines)", "9911223344", "12 Rajpur Road, Civil Lines, Delhi - 110054"),
-            ("Walk-in Cash Customer", "", "Counter Sale, Delhi")
+            ("Gupta Construction Co. (Karol Bagh)", "9811223344", "15 DB Gupta Road, Karol Bagh, Delhi - 110005"),
+            ("Malhotra Interiors & Paint Decor (South Ex)", "9899112233", "F-42, South Extension Part 1, Delhi - 110049"),
+            ("Aggarwal Hardware & Mill Store (Hauz Qazi)", "9810887766", "Shop 8, Lal Kuan, Hauz Qazi, Delhi - 110006"),
+            ("Choudhary Builders & Developers (Dwarka)", "9971234567", "Sector 12, Dwarka, Delhi - 110078"),
+            ("Kapoor Sanitary & Plumbing Works (Pitampura)", "9810334455", "MD Block, Pitampura, Delhi - 110034"),
+            ("Sunil Kumar (Civil Lines)", "9818001122", "12 Rajpur Road, Civil Lines, Delhi - 110054"),
+            ("Walk-in Cash Customer", "", "Counter Sale, Delhi - 110006")
         ]
+        demo_customer_names = [c[0] for c in demo_customers]
+        if force:
+            cursor.execute("DELETE FROM invoice_items")
+            cursor.execute("DELETE FROM invoices")
+            placeholders = ",".join(["?"] * len(demo_customer_names))
+            cursor.execute(f"DELETE FROM customers WHERE name NOT IN ({placeholders})", demo_customer_names)
+
         cust_id_map = {}
         for cname, cphone, caddr in demo_customers:
             cursor.execute("SELECT id FROM customers WHERE name = ?", (cname,))
@@ -2239,63 +2251,203 @@ def seed_paints_and_hardware_demo_data():
                 cursor.execute("INSERT INTO customers(name, phone, address) VALUES (?, ?, ?)", (cname, cphone, caddr))
                 cust_id_map[cname] = cursor.lastrowid
 
-        # 5. Seed 3 Trial Invoices if no invoices exist
+        # 5. Seed Trial Invoices for 10 customers (8 pending balances, 2 fully paid)
         cursor.execute("SELECT COUNT(*) FROM invoices")
-        if cursor.fetchone()[0] == 0:
-            # Invoice 1: Sharma Contractors (Wholesale credit invoice)
-            c1_id = cust_id_map["Sharma Contractors & Builders (Chawri Bazar)"]
-            cursor.execute("""
-            INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
-            VALUES('1001', ?, 18286.80, 14000.00, 4286.80, datetime('now', '-2 hours'), 'Site delivery at Daryaganj project', 'ACTIVE')
-            """, (c1_id,))
-            inv1_id = cursor.lastrowid
+        inv_count = cursor.fetchone()[0]
+        if inv_count < 11 or force:
+            cursor.execute("DELETE FROM invoice_items")
+            cursor.execute("DELETE FROM invoices")
 
-            # Items for Inv 1
-            cursor.execute("SELECT id FROM products WHERE name = 'Asian Paints Apex Ultima White 20L'")
-            p1_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 2, 7800.0, 7100.0, 0, 14200.0, 'Bucket')", (inv1_id, p1_id))
-            cursor.execute("SELECT id FROM products WHERE name = 'Asian Paints TruCare Acrylic Wall Putty 20kg'")
-            p2_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 5, 850.0, 760.0, 0, 3800.0, 'Bag')", (inv1_id, p2_id))
-            cursor.execute("SELECT id FROM products WHERE name = 'Paint Roller 9 inch with Tray Set'")
-            p3_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 3, 280.0, 220.0, 2.0, 646.80, 'Set')", (inv1_id, p3_id))
+            def get_pid(pname):
+                cursor.execute("SELECT id FROM products WHERE name = ?", (pname,))
+                r = cursor.fetchone()
+                return r[0] if r else None
 
-            # Invoice 2: Rajesh Painter (Fully Paid Enamel & Thinner)
-            c2_id = cust_id_map["Rajesh Painter & Polish Works (Laxmi Nagar)"]
-            cursor.execute("""
-            INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
-            VALUES('1002', ?, 3320.00, 3320.00, 0.0, datetime('now', '-1 hours'), 'Full Cash Payment', 'ACTIVE')
-            """, (c2_id,))
-            inv2_id = cursor.lastrowid
+            def add_demo_inv(inv_num, cname, total, paid, pending, date_expr, note, items):
+                cid = cust_id_map[cname]
+                cursor.execute(f"""
+                INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
+                VALUES (?, ?, ?, ?, ?, {date_expr}, ?, 'ACTIVE')
+                """, (inv_num, cid, total, paid, pending, note))
+                iid = cursor.lastrowid
+                for pname, qty, mrp, price, disc, disc_base, tot, unit in items:
+                    pid = get_pid(pname)
+                    if pid:
+                        cursor.execute("""
+                        INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, discount_base, total, unit, increase)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0)
+                        """, (iid, pid, qty, mrp, price, disc, disc_base, tot, unit))
+                return iid
 
-            cursor.execute("SELECT id FROM products WHERE name = 'Apcolite Premium Gloss Enamel 4L'")
-            p4_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 2, 1350.0, 1220.0, 0, 2440.0, 'Can')", (inv2_id, p4_id))
-            cursor.execute("SELECT id FROM products WHERE name = 'NC Premium Thinner 1 Ltr'")
-            p5_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 4, 180.0, 150.0, 0, 600.0, 'Bottle')", (inv2_id, p5_id))
-            cursor.execute("SELECT id FROM products WHERE name = 'Paint Brush 3 inch (Bristle)'")
-            p6_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 4, 90.0, 70.0, 0, 280.0, 'Pcs')", (inv2_id, p6_id))
+            # 1. Sharma Contractors - Invoice 1 (Pending: 6,646.80)
+            add_demo_inv(
+                "1001",
+                "Sharma Contractors & Builders (Chawri Bazar)",
+                18646.80, 12000.00, 6646.80,
+                "datetime('now', '-2 days', '-4 hours')",
+                "Daryaganj site delivery - Ultima & Putty advance",
+                [
+                    ("Asian Paints Apex Ultima White 20L", 2, 7800.0, 7100.0, 0, "Price", 14200.0, "Bucket"),
+                    ("Asian Paints TruCare Acrylic Wall Putty 20kg", 5, 850.0, 760.0, 0, "Price", 3800.0, "Bag"),
+                    ("Paint Roller 9 inch with Tray Set", 3, 280.0, 220.0, 2.0, "Price", 646.80, "Set")
+                ]
+            )
 
-            # Invoice 3: Walk-in Cash Customer
-            c3_id = cust_id_map["Walk-in Cash Customer"]
-            cursor.execute("""
-            INSERT INTO invoices(invoice_number, customer_id, total, paid, pending, invoice_date, note, status)
-            VALUES('1003', ?, 1915.00, 1915.00, 0.0, datetime('now', '-20 minutes'), 'UPI Payment', 'ACTIVE')
-            """, (c3_id,))
-            inv3_id = cursor.lastrowid
+            # 2. Sharma Contractors - Invoice 2 (Pending: 3,450.00)
+            add_demo_inv(
+                "1002",
+                "Sharma Contractors & Builders (Chawri Bazar)",
+                8450.00, 5000.00, 3450.00,
+                "datetime('now', '-1 days', '-2 hours')",
+                "WeatherCoat & Exterior Primer for Boundary Wall",
+                [
+                    ("Berger WeatherCoat All Guard 20L", 1, 6900.0, 6200.0, 0, "Price", 6200.0, "Bucket"),
+                    ("Asian Paints Exterior Wall Primer 10L", 1, 1650.0, 1480.0, 0, "Price", 1480.0, "Bucket"),
+                    ("Paint Brush 4 inch (Bristle)", 4, 130.0, 105.0, 0, "Price", 420.0, "Pcs"),
+                    ("Waterproof Sandpaper #120 (Medium)", 19, 25.0, 18.0, 2.63, "Price", 350.0, "Sheet")
+                ]
+            )
 
-            cursor.execute("SELECT id FROM products WHERE name = 'Brass Mortise Handle Lock Set (6 Lever)'")
-            p7_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 1, 1850.0, 1550.0, 0, 1550.0, 'Set')", (inv3_id, p7_id))
-            cursor.execute("SELECT id FROM products WHERE name = 'Drywall Gypsum Screws 1.5 inch (Box 500 Pcs)'")
-            p8_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 1, 320.0, 250.0, 0, 250.0, 'Box')", (inv3_id, p8_id))
-            cursor.execute("SELECT id FROM products WHERE name = 'PTFE Teflon Tape (Pack of 10)'")
-            p9_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO invoice_items(invoice_id, product_id, quantity, mrp, price, discount, total, unit) VALUES (?, ?, 1, 150.0, 115.0, 0, 115.0, 'Pkt')", (inv3_id, p9_id))
+            # 3. Rajesh Painter & Polish Works - Invoice 3 (Pending: 2,680.00)
+            add_demo_inv(
+                "1003",
+                "Rajesh Painter & Polish Works (Laxmi Nagar)",
+                5680.00, 3000.00, 2680.00,
+                "datetime('now', '-1 days', '-5 hours')",
+                "Enamels, Thinner & Polish sandpaper for Geeta Colony Flat",
+                [
+                    ("Apcolite Premium Gloss Enamel 4L", 2, 1350.0, 1220.0, 0, "Price", 2440.0, "Can"),
+                    ("NC Premium Thinner 1 Ltr", 8, 180.0, 150.0, 0, "Price", 1200.0, "Bottle"),
+                    ("Paint Brush 3 inch (Bristle)", 10, 90.0, 70.0, 0, "Price", 700.0, "Pcs"),
+                    ("Waterproof Sandpaper #220 (Fine)", 20, 25.0, 18.0, 0, "Price", 360.0, "Sheet"),
+                    ("Masking Tape 2 inch (20m)", 13, 95.0, 75.0, 0, "Price", 980.0, "Roll")
+                ]
+            )
+
+            # 4. Verma Hardware & Sanitary Store - Invoice 4 (Pending: 4,350.00)
+            add_demo_inv(
+                "1004",
+                "Verma Hardware & Sanitary Store (Rohini)",
+                14350.00, 10000.00, 4350.00,
+                "datetime('now', '-1 days', '-1 hours')",
+                "Wholesale Mortise Locks & SS Hinges delivery",
+                [
+                    ("Brass Mortise Handle Lock Set (6 Lever)", 4, 1850.0, 1550.0, 0, "Price", 6200.0, "Set"),
+                    ("SS Butt Hinges 4 inch (Heavy 3mm)", 20, 160.0, 130.0, 0, "Price", 2600.0, "Pair"),
+                    ("SS Aldrop 10 inch with Rod & Bolts", 5, 480.0, 390.0, 0, "Price", 1950.0, "Set"),
+                    ("Drywall Gypsum Screws 1.5 inch (Box 500 Pcs)", 11, 320.0, 250.0, 0, "Price", 2750.0, "Box"),
+                    ("SS Tower Bolt 6 inch", 10, 110.0, 85.0, 0, "Price", 850.0, "Pcs")
+                ]
+            )
+
+            # 5. Gupta Construction Co. - Invoice 5 (Pending: 9,600.00)
+            add_demo_inv(
+                "1005",
+                "Gupta Construction Co. (Karol Bagh)",
+                24600.00, 15000.00, 9600.00,
+                "datetime('now', '-18 hours')",
+                "Commercial interior painting project - Pusa Road",
+                [
+                    ("Asian Paints Royale Luxury Emulsion 10L", 3, 5200.0, 4750.0, 0, "Price", 14250.0, "Bucket"),
+                    ("Asian Paints TruCare Acrylic Wall Putty 20kg", 10, 850.0, 760.0, 0, "Price", 7600.0, "Bag"),
+                    ("Paint Brush 4 inch (Bristle)", 15, 130.0, 105.0, 0, "Price", 1575.0, "Pcs"),
+                    ("Masking Tape 1 inch (20m)", 31, 50.0, 38.0, 0, "Price", 1175.0, "Roll")
+                ]
+            )
+
+            # 6. Malhotra Interiors & Paint Decor - Invoice 6 (Pending: 3,850.00)
+            add_demo_inv(
+                "1006",
+                "Malhotra Interiors & Paint Decor (South Ex)",
+                11850.00, 8000.00, 3850.00,
+                "datetime('now', '-14 hours')",
+                "Boutique showroom polish & finish supplies",
+                [
+                    ("Asian Paints Royale Luxury Emulsion 1L", 10, 590.0, 530.0, 0, "Price", 5300.0, "Can"),
+                    ("Paint Roller 9 inch with Tray Set", 15, 280.0, 220.0, 0, "Price", 3300.0, "Set"),
+                    ("Waterproof Sandpaper #220 (Fine)", 100, 25.0, 18.0, 0, "Price", 1800.0, "Sheet"),
+                    ("Commercial Thinner 5 Ltr", 2, 650.0, 550.0, 0, "Price", 1100.0, "Can"),
+                    ("Masking Tape 2 inch (20m)", 4, 95.0, 75.0, 0, "Price", 350.0, "Roll")
+                ]
+            )
+
+            # 7. Aggarwal Hardware & Mill Store - Invoice 7 (Pending: 3,920.00)
+            add_demo_inv(
+                "1007",
+                "Aggarwal Hardware & Mill Store (Hauz Qazi)",
+                9920.00, 6000.00, 3920.00,
+                "datetime('now', '-8 hours')",
+                "Fasteners, Wire Nails & Wood screws stock order",
+                [
+                    ("Wire Nails 2 inch (1 kg Pack)", 30, 110.0, 90.0, 0, "Price", 2700.0, "Kg"),
+                    ("Wire Nails 3 inch (1 kg Pack)", 30, 110.0, 90.0, 0, "Price", 2700.0, "Kg"),
+                    ("SS Wood Screws 1 inch (Box 100 Pcs)", 20, 140.0, 110.0, 0, "Price", 2200.0, "Box"),
+                    ("PVC Rawl Plugs 35mm (Pack of 100)", 20, 80.0, 55.0, 0, "Price", 1100.0, "Pkt"),
+                    ("Hacksaw Frame with Bi-Metal Blade", 4, 290.0, 225.0, 0, "Price", 900.0, "Pcs"),
+                    ("Steel Measuring Tape 5 Metre", 2, 180.0, 135.0, 0, "Price", 320.0, "Pcs")
+                ]
+            )
+
+            # 8. Choudhary Builders & Developers - Invoice 8 (Pending: 12,500.00)
+            add_demo_inv(
+                "1008",
+                "Choudhary Builders & Developers (Dwarka)",
+                32500.00, 20000.00, 12500.00,
+                "datetime('now', '-5 hours')",
+                "Dwarka Sector 19 site project - Exterior Paint & Putty",
+                [
+                    ("Asian Paints Apex Ultima White 20L", 3, 7800.0, 7100.0, 0, "Price", 21300.0, "Bucket"),
+                    ("JK WallMaxx White Wall Putty 40kg", 10, 980.0, 890.0, 0, "Price", 8900.0, "Bag"),
+                    ("Asian Paints Exterior Wall Primer 10L", 1, 1650.0, 1480.0, 0, "Price", 1480.0, "Bucket"),
+                    ("Claw Hammer 500g with Fiberglass Handle", 2, 380.0, 295.0, 0, "Price", 590.0, "Pcs"),
+                    ("Combination Pliers 8 inch (Insulated)", 1, 320.0, 245.0, 6.12, "Price", 230.0, "Pcs")
+                ]
+            )
+
+            # 9. Kapoor Sanitary & Plumbing Works - Invoice 9 (Pending: 2,850.00)
+            add_demo_inv(
+                "1009",
+                "Kapoor Sanitary & Plumbing Works (Pitampura)",
+                7850.00, 5000.00, 2850.00,
+                "datetime('now', '-3 hours')",
+                "CPVC fittings, solvent cement & bib taps order",
+                [
+                    ("CPVC Brass Elbow 1/2 inch", 30, 95.0, 75.0, 0, "Price", 2250.0, "Pcs"),
+                    ("CPVC Ball Valve 1 inch (Heavy)", 10, 280.0, 225.0, 0, "Price", 2250.0, "Pcs"),
+                    ("CPVC Solvent Cement 250ml Tin", 8, 240.0, 195.0, 0, "Price", 1560.0, "Tin"),
+                    ("Brass Bib Tap 1/2 inch Long Body", 2, 550.0, 440.0, 0, "Price", 880.0, "Pcs"),
+                    ("PTFE Teflon Tape (Pack of 10)", 8, 150.0, 115.0, 0, "Price", 920.0, "Pkt")
+                ]
+            )
+
+            # 10. Sunil Kumar - Invoice 10 (Fully Paid - Pending: 0.00)
+            add_demo_inv(
+                "1010",
+                "Sunil Kumar (Civil Lines)",
+                3450.00, 3450.00, 0.00,
+                "datetime('now', '-1 hours')",
+                "House painting touchup - Full payment via UPI",
+                [
+                    ("Asian Paints Tractor Emulsion White 4L", 4, 720.0, 650.0, 0, "Price", 2600.0, "Can"),
+                    ("Paint Brush 3 inch (Bristle)", 5, 90.0, 70.0, 0, "Price", 350.0, "Pcs"),
+                    ("Masking Tape 1 inch (20m)", 10, 50.0, 38.0, 0, "Price", 380.0, "Roll"),
+                    ("Waterproof Sandpaper #120 (Medium)", 6, 25.0, 18.0, 0, "Price", 120.0, "Sheet")
+                ]
+            )
+
+            # 11. Walk-in Cash Customer - Invoice 1011 (Fully Paid - Pending: 0.00)
+            add_demo_inv(
+                "1011",
+                "Walk-in Cash Customer",
+                1915.00, 1915.00, 0.00,
+                "datetime('now', '-25 minutes')",
+                "Counter retail sale - Full Cash Payment",
+                [
+                    ("Brass Mortise Handle Lock Set (6 Lever)", 1, 1850.0, 1550.0, 0, "Price", 1550.0, "Set"),
+                    ("Drywall Gypsum Screws 1.5 inch (Box 500 Pcs)", 1, 320.0, 250.0, 0, "Price", 250.0, "Box"),
+                    ("PTFE Teflon Tape (Pack of 10)", 1, 150.0, 115.0, 0, "Price", 115.0, "Pkt")
+                ]
+            )
 
         # Mark demo_seed_skipped as '0' so demo data is acknowledged
         cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('demo_seed_skipped', '0')")

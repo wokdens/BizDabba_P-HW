@@ -59,7 +59,7 @@ def assemble_release():
         database.DATABASE_PATH = target_db_path
         database.create_tables()
         database.run_migrations()
-        ok, msg = database.seed_paints_and_hardware_demo_data()
+        ok, msg = database.seed_paints_and_hardware_demo_data(force=True)
         assert ok, f"Demo data seeding failed: {msg}"
         database.safe_flush_pen_drive()
         print(f"Pre-seeded database verified OK: {target_db_path}")
@@ -110,40 +110,52 @@ are pending. BizDabba PHWP includes a dedicated protection system:
   4. Unplug the Pen Drive and take your entire business data safely home!
 
 --------------------------------------------------------------------------------
-3. PRE-LOADED TRY-BEFORE-YOU-BUY DELHI DEMO DATA
+3. PRE-LOADED TRY-BEFORE-YOU-BUY DELHI DEMO DATA (10 CUSTOMERS / 8 PENDING)
 --------------------------------------------------------------------------------
 BizDabba PHWP comes pre-seeded with genuine Delhi market Paints & Hardware data:
 
-• Catalog:
+• Curated Catalog (51 Items across 8 Categories):
   - Asian Paints: Apex Ultima (20L, 4L), Royale Luxury Emulsion, Tractor Emulsion
-  - Berger: WeatherCoat All Guard
+  - Berger: WeatherCoat All Guard, Walmasta Emulsion
   - Nerolac: Beauty Smooth Finish
   - Enamels & Primers: Apcolite Gloss Enamel, Red Oxide Primer, NC & Commercial Thinner
   - Putty & Distemper: TruCare Acrylic Putty, JK WallMaxx White Putty, Distemper
-  - Tools: Paint Brushes (2", 3", 4"), 9" Roller sets, Waterproof Sandpaper (#80, #120, #220), Masking Tape
+  - Tools: Paint Brushes (2", 3", 4"), 9" Roller sets, Waterproof Sandpaper (#120, #220), Masking Tape
   - Hardware & Locks: Brass Mortise Handle 6-lever locks, SS Butt Hinges, Aldrop, Tower Bolts
-  - Fasteners: Drywall Gypsum Screws (1.5", 2"), SS Wood Screws, Wire Nails (1kg), PVC Rawl Plugs
+  - Fasteners: Drywall Gypsum Screws (1.5"), SS Wood Screws, Wire Nails (1kg), PVC Rawl Plugs
   - Plumbing: CPVC Brass Elbows, Ball Valves, Solvent Cement, Teflon Tape, Bib Taps
   - Hand Tools: Claw Hammers, 5m Steel Measuring Tapes, 8-in-1 Screwdriver sets, Hacksaws, Pliers
 
-• Customer Ledgers:
-  - Sharma Contractors & Builders (Chawri Bazar) [Active Wholesale Credit Account]
-  - Rajesh Painter & Polish Works (Laxmi Nagar) [Paid Account]
-  - Verma Hardware & Sanitary Store (Rohini) [Trade Customer]
-  - Sunil Kumar (Civil Lines) [Retail Account]
-  - Walk-in Cash Customer (Counter Sale)
+• Customer Ledgers (Exactly 10 Delhi Profiles - 8 with Pending Dues):
+  1. Choudhary Builders & Developers (Dwarka)             [Pending: ₹ 12,500.00]
+  2. Sharma Contractors & Builders (Chawri Bazar)         [Pending: ₹ 10,096.80]
+  3. Gupta Construction Co. (Karol Bagh)                 [Pending: ₹  9,600.00]
+  4. Verma Hardware & Sanitary Store (Rohini)             [Pending: ₹  4,350.00]
+  5. Aggarwal Hardware & Mill Store (Hauz Qazi)           [Pending: ₹  3,920.00]
+  6. Malhotra Interiors & Paint Decor (South Ex)          [Pending: ₹  3,850.00]
+  7. Kapoor Sanitary & Plumbing Works (Pitampura)         [Pending: ₹  2,850.00]
+  8. Rajesh Painter & Polish Works (Laxmi Nagar)          [Pending: ₹  2,680.00]
+  9. Sunil Kumar (Civil Lines)                            [Fully Paid - ₹ 0.00 Dues]
+ 10. Walk-in Cash Customer                                [Fully Paid - ₹ 0.00 Dues]
 
 • Demo Catalog File:
   - DEMO_PAINTS_HARDWARE_CATALOG.csv is included in this folder for reference 
     or re-import anytime.
 
 --------------------------------------------------------------------------------
-4. THERMAL RECEIPT PRINTER
+4. DUAL PRINTING: 80MM THERMAL POS & STANDARD A4 PDF ON ALL PENDING SCREENS
 --------------------------------------------------------------------------------
-• Pre-configured for 80mm ESC/POS Thermal Printers (Helix 1 calibrated).
-• Automatic crisp receipts with Indian Rupee formatting, GST breakdown, 
-  and balance dues summary.
-• Also supports standard A4 Laser/Inkjet PDF invoice printing.
+Every page featuring pending payments supports BOTH printing modes:
+• Ledger Page:
+  - [Thermal Statement] : 80mm ESC/POS statement of account (Helix 1 calibrated / PDF fallback).
+  - [Statement PDF (A4)]: Formal full-sheet Statement of Account with running debit/credit balance.
+• Ledger Payment Dialog:
+  - [80mm Thermal]      : Immediate receipt printout showing paid amount & remaining pending balance.
+  - [A4 PDF]            : Full invoice document.
+• Invoice History:
+  - [80mm Thermal POS Receipt] & [Standard A4 PDF].
+• Sales Invoice:
+  - [Save & Print 80mm Receipt (Ctrl+P)] & [Save & Print A4 PDF (Ctrl+J)].
 
 --------------------------------------------------------------------------------
 5. SECURITY & PASSWORDS

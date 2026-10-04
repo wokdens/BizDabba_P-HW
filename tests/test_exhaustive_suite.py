@@ -21,6 +21,7 @@ from ui.main_window import MainWindow
 from ui.customer_popup import validate_and_normalize_indian_mobile, CustomerPopup
 from ui.thermal_printer import amount_to_indian_words, format_esc_pos_receipt
 from ui.csv_security import export_encrypted_csv_archive
+from ui.invoice_ui import generate_thermal_receipt_pdf, generate_a4_invoice_pdf
 
 def run_exhaustive_suite():
     print("=" * 70)
@@ -459,19 +460,59 @@ def run_exhaustive_suite():
             assert "HARDWARE - FASTENERS & NAILS" in categories, "Missing HARDWARE - FASTENERS & NAILS category"
 
             total_custs = database.get_total_customers()
-            assert total_custs >= 4, f"Expected 4+ demo customers, got {total_custs}"
+            assert total_custs == 10, f"Expected exactly 10 demo customers, got {total_custs}"
+            pending_custs = database.get_customers_with_pending()
+            assert len(pending_custs) == 8, f"Expected exactly 8 customers with pending dues in ledger, got {len(pending_custs)}"
             print(f"  -> Paints & Hardware demo catalog seeded: {total_prods} products across {len(categories)} categories.")
+            print(f"  -> Demo customer accounts verified: exactly 10 customers, {len(pending_custs)} with pending dues in Ledger.")
 
-            # 3. Pen Drive Safe Flush & Checkpoint
+            # 3. Test Dual Printing (80mm Thermal & A4 Sheet) across all 8 pending accounts
+            app.open_ledger()
+            ledger_ui = app.current_ui
+            for cname, dues, inv_cnt in pending_custs:
+                ledger_ui.current_customer_name = cname
+                ledger_ui.current_total_dues = dues
+
+                # A4 Statement PDF
+                ledger_ui.export_statement_pdf()
+
+                # 80mm Thermal Statement
+                ledger_ui.export_thermal_statement()
+
+                # Test Invoices for this customer
+                invoices = database.get_customer_invoices(cname)
+                assert len(invoices) > 0, f"No invoices found for pending customer {cname}"
+                for inv in invoices:
+                    inv_id, inv_num, inv_date, total, paid, pending, note, status = inv[:8]
+                    assert pending > 0, f"Expected pending > 0 for {cname} invoice {inv_num}"
+                    items = database.get_invoice_items(inv_id)
+
+                    # 80mm Thermal receipt
+                    t_path = generate_thermal_receipt_pdf(inv_num, cname, items, total, paid, note, inv_date, open_file=False)
+                    assert os.path.isfile(t_path) and os.path.getsize(t_path) > 500, f"Thermal receipt failed for {inv_num}"
+
+                    # A4 Invoice PDF
+                    a4_path = generate_a4_invoice_pdf(inv_num, cname, items, total, paid, note, inv_date, open_file=False)
+                    assert os.path.isfile(a4_path) and os.path.getsize(a4_path) > 500, f"A4 invoice failed for {inv_num}"
+
+            # Verify the 2 fully paid customers (0 dues)
+            for paid_cname in ["Sunil Kumar (Civil Lines)", "Walk-in Cash Customer"]:
+                p_invs = database.get_customer_invoices(paid_cname)
+                assert len(p_invs) == 1, f"Expected 1 invoice for {paid_cname}"
+                assert p_invs[0][5] == 0, f"Expected 0 pending for {paid_cname}, got {p_invs[0][5]}"
+
+            print("  -> Dual printing (80mm Thermal & A4 Sheet) verified 100% OK across all 8 pending customer profiles & invoices.")
+
+            # 4. Pen Drive Safe Flush & Checkpoint
             ok_flush, msg_flush = database.safe_flush_pen_drive()
             assert ok_flush is True, f"safe_flush_pen_drive failed: {msg_flush}"
             print("  -> Pen Drive safe flush (WAL checkpoint & auto-backup) verified OK.")
 
-            # 4. Global Pen Drive Save Trigger (Ctrl+S Simulation)
+            # 5. Global Pen Drive Save Trigger (Ctrl+S Simulation)
             app.trigger_pen_drive_save()
             print("  -> Global Pen Drive Save (Ctrl+S) triggered & executed cleanly.")
 
-            # 5. Verify Demo Catalog CSV file
+            # 6. Verify Demo Catalog CSV file
             csv_demo = os.path.join(os.path.dirname(__file__), "..", "DEMO_PAINTS_HARDWARE_CATALOG.csv")
             assert os.path.isfile(csv_demo), f"DEMO_PAINTS_HARDWARE_CATALOG.csv missing at {csv_demo}"
             with open(csv_demo, "r", encoding="utf-8") as f:

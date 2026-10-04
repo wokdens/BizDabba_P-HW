@@ -19,20 +19,31 @@ def run_tests():
     print('STARTING FULL END-TO-END AUTOMATED TEST SUITE')
     print('=' * 60)
 
-    root = tk.Tk()
-    root.withdraw()
+    import tempfile
+    import shutil
+    old_db_path = database.DATABASE_PATH
+    temp_dir = tempfile.mkdtemp()
+    temp_db_path = os.path.join(temp_dir, "test_app_business.db")
+    database.DATABASE_PATH = temp_db_path
+    database.create_tables()
+    database.run_migrations()
+    database.seed_paints_and_hardware_demo_data(force=True)
 
-    with patch('tkinter.messagebox.showinfo') as mock_info, \
-         patch('tkinter.messagebox.showerror') as mock_error, \
-         patch('tkinter.messagebox.showwarning') as mock_warning, \
-         patch('ui.invoice_ui.open_pdf_file') as mock_open_pdf, \
-         patch('ui.thermal_printer.print_receipt_direct', return_value=(True, "Mock print OK")) as mock_print_direct, \
-         patch('ui.thermal_printer.send_raw_to_printer', return_value=(True, "Mock raw OK")) as mock_raw_print:
+    try:
+        root = tk.Tk()
+        root.withdraw()
 
-        # Step 1: Initialize MainWindow
-        print('[TEST 1] Initializing MainWindow...')
-        app = MainWindow(root)
-        print('MainWindow initialized successfully.')
+        with patch('tkinter.messagebox.showinfo') as mock_info, \
+             patch('tkinter.messagebox.showerror') as mock_error, \
+             patch('tkinter.messagebox.showwarning') as mock_warning, \
+             patch('ui.invoice_ui.open_pdf_file') as mock_open_pdf, \
+             patch('ui.thermal_printer.print_receipt_direct', return_value=(True, "Mock print OK")) as mock_print_direct, \
+             patch('ui.thermal_printer.send_raw_to_printer', return_value=(True, "Mock raw OK")) as mock_raw_print:
+
+            # Step 1: Initialize MainWindow
+            print('[TEST 1] Initializing MainWindow...')
+            app = MainWindow(root)
+            print('MainWindow initialized successfully.')
 
         # Step 2: Test InvoiceUI directly
         print('[TEST 2] Testing InvoiceUI workflow...')
@@ -267,10 +278,16 @@ def run_tests():
         assert len(database.get_all_categories()) >= 20, 'Categories not stored in database!'
         print(f'InventoryUI imported {len(inv_ui.tree.get_children())} products and {len(database.get_all_categories())} categories successfully.')
 
-    root.destroy()
-    print('=' * 60)
-    print('ALL 9 END-TO-END TESTS PASSED WITH ZERO ERRORS!')
-    print('=' * 60)
+        root.destroy()
+        print('=' * 60)
+        print('ALL 9 END-TO-END TESTS PASSED WITH ZERO ERRORS!')
+        print('=' * 60)
+    finally:
+        database.DATABASE_PATH = old_db_path
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

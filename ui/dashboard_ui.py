@@ -717,15 +717,15 @@ class DashboardUI:
             "Do you want to load the pre-seeded Delhi Paints & Hardware catalog and ledger data?\n\n"
             "This will add:\n"
             "• 50+ products across 8 categories (Asian Paints, Berger, Enamel, Thinners, Putty, Locks, CPVC fittings, etc.)\n"
-            "• Sample contractor & painter customer profiles\n"
-            "• 3 Realistic sales invoices\n\n"
+            "• 10 Delhi contractor & painter customer profiles\n"
+            "• 11 Realistic sales invoices (8 with pending balances in Ledger)\n\n"
             "Existing unique records will be preserved. Proceed?",
             parent=self.frame
         )
         if not confirm:
             return
 
-        ok, msg = seed_paints_and_hardware_demo_data()
+        ok, msg = seed_paints_and_hardware_demo_data(force=True)
         if ok:
             safe_flush_pen_drive()
             try:

@@ -339,10 +339,23 @@ class LedgerUI:
         action_btn_frame = tk.Frame(header_frame)
         action_btn_frame.pack(side="right")
 
-        # Export Statement PDF Button
+        # Export Thermal Statement Button (80mm Helix 1)
+        thermal_stmt_btn = tk.Button(
+            action_btn_frame,
+            text="🖨️ Thermal Statement",
+            command=self.export_thermal_statement,
+            bg="#5634f0",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=12,
+            pady=5
+        )
+        thermal_stmt_btn.pack(side="left", padx=5)
+
+        # Export Statement PDF Button (A4 Sheet)
         statement_btn = tk.Button(
             action_btn_frame,
-            text="📄 Statement PDF",
+            text="📄 Statement PDF (A4)",
             command=self.export_statement_pdf,
             bg="#17a2b8",
             fg="white",
@@ -355,9 +368,9 @@ class LedgerUI:
         # Pay All Bills Button
         pay_all_btn = tk.Button(
             action_btn_frame,
-            text="Pay All Bills",
+            text="💰 Pay All Bills",
             command=self.pay_all_pending_bills,
-            bg="#5634f0",
+            bg="#28a745",
             fg="white",
             font=("Arial", 10, "bold"),
             padx=12,
@@ -738,15 +751,188 @@ class LedgerUI:
 
             pdf.save()
 
-            # Open PDF automatically
-            if os.name == "nt":
-                os.startfile(os.path.abspath(pdf_path))
-            else:
-                subprocess.Popen(["xdg-open", os.path.abspath(pdf_path)])
+            from ui.invoice_ui import open_pdf_file
+            open_pdf_file(pdf_path)
 
-            messagebox.showinfo("Statement Generated", f"Statement of Account saved successfully:\n{pdf_path}")
+            messagebox.showinfo("Statement Generated", f"Statement of Account saved successfully:\n{pdf_path}", parent=self.frame)
         except Exception as e:
-            messagebox.showerror("Error Generating Statement", str(e))
+            messagebox.showerror("Error Generating Statement", str(e), parent=self.frame)
+
+    def export_thermal_statement(self):
+        """Generates an 80mm Thermal POS Statement for the customer dues, calibrated for Helix 1."""
+        customer_name = getattr(self, "current_customer_name", None)
+        if not customer_name:
+            return
+
+        cust_info, transactions = get_customer_statement_data(customer_name)
+        if not cust_info or not transactions:
+            messagebox.showinfo("No Transactions", f"No transactions found for {customer_name}", parent=self.frame)
+            return
+
+        import re
+        from database import get_shop_details
+        from config import INVOICES_DIR
+        from ui.thermal_printer import find_thermal_printer, send_raw_to_printer, amount_to_indian_words
+        from reportlab.pdfgen import canvas
+
+        shop = get_shop_details()
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', customer_name)
+        today_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pdf_path = os.path.join(INVOICES_DIR, f"Statement_{safe_name}_{today_str}_80mm.pdf")
+
+        # 1. Check if direct thermal printer exists
+        t_printer = find_thermal_printer()
+        if t_printer:
+            try:
+                ESC = b'\x1b'
+                GS = b'\x1d'
+                BOLD_ON = ESC + b'\x45\x01'
+                BOLD_OFF = ESC + b'\x45\x00'
+                ALIGN_CENTER = ESC + b'\x61\x01'
+                ALIGN_LEFT = ESC + b'\x61\x00'
+                ALIGN_RIGHT = ESC + b'\x61\x02'
+                FEED_CUT = GS + b'\x56\x00'
+
+                raw = bytearray()
+                raw.extend(ALIGN_CENTER + BOLD_ON + f"{shop['name']}\n".encode('ascii', 'replace') + BOLD_OFF)
+                raw.extend(f"{shop['address'][:48]}\n".encode('ascii', 'replace'))
+                raw.extend(f"Phone: {shop['phone']}\n".encode('ascii', 'replace'))
+                raw.extend(b'================================================\n')
+                raw.extend(BOLD_ON + b'         STATEMENT OF ACCOUNT (PENDING)         \n' + BOLD_OFF)
+                raw.extend(b'================================================\n')
+                raw.extend(ALIGN_LEFT)
+                raw.extend(f"Customer : {cust_info['name']}\n".encode('ascii', 'replace'))
+                if cust_info.get('phone'):
+                    raw.extend(f"Phone    : {cust_info['phone']}\n".encode('ascii', 'replace'))
+                raw.extend(f"Date     : {datetime.now().strftime('%d-%m-%Y %I:%M %p')}\n".encode('ascii', 'replace'))
+                raw.extend(b'------------------------------------------------\n')
+                raw.extend(b'Date       Inv No      Billed    Paid    Pending\n')
+                raw.extend(b'------------------------------------------------\n')
+
+                for tx in transactions:
+                    dt = str(tx['date'])[:10]
+                    inv = f"INV-{tx['invoice_number']}"[:9]
+                    bld = f"{tx['total']:,.0f}"[:8]
+                    pd = f"{tx['paid']:,.0f}"[:7]
+                    pnd = f"{tx['pending']:,.0f}"[:7]
+                    raw.extend(f"{dt:<10} {inv:<9} {bld:>8} {pd:>7} {pnd:>8}\n".encode('ascii', 'replace'))
+
+                raw.extend(b'================================================\n')
+                raw.extend(ALIGN_RIGHT)
+                raw.extend(f"Total Invoiced : Rs. {cust_info['total_invoiced']:,.2f}\n".encode('ascii', 'replace'))
+                raw.extend(f"Total Paid     : Rs. {cust_info['total_paid']:,.2f}\n".encode('ascii', 'replace'))
+                raw.extend(BOLD_ON + f"NET BALANCE DUE: Rs. {cust_info['net_dues']:,.2f}\n".encode('ascii', 'replace') + BOLD_OFF)
+                words = amount_to_indian_words(cust_info['net_dues'])
+                if words:
+                    raw.extend(f"({words})\n".encode('ascii', 'replace'))
+
+                raw.extend(ALIGN_CENTER + b'------------------------------------------------\n')
+                raw.extend(b'Please clear overdue balance at earliest.\n')
+                raw.extend(BOLD_ON + b'Powered by wokdens.com\n' + BOLD_OFF)
+                raw.extend(FEED_CUT)
+
+                ok, msg = send_raw_to_printer(t_printer, bytes(raw), doc_name=f"Stmt-{safe_name}")
+                if ok:
+                    messagebox.showinfo(
+                        "Thermal Statement Sent",
+                        f"80mm Statement for {customer_name} printed directly to '{t_printer}'.",
+                        parent=self.frame
+                    )
+                    return
+            except Exception as e:
+                print(f"Direct thermal statement notice: {e}")
+
+        # Fallback / PDF Generation: Standard 80mm PDF
+        try:
+            mm_to_pt = 72.0 / 25.4
+            width_pt = 80.0 * mm_to_pt
+            est_height = 280 + (len(transactions) * 24)
+            height_pt = max(380.0, float(est_height))
+
+            pdf = canvas.Canvas(pdf_path, pagesize=(width_pt, height_pt))
+            margin = 8.0
+            curr_y = height_pt - 16
+
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawCentredString(width_pt / 2, curr_y, str(shop['name']))
+            curr_y -= 11
+
+            pdf.setFont("Helvetica", 6.8)
+            pdf.drawCentredString(width_pt / 2, curr_y, str(shop['address'])[:50])
+            curr_y -= 9
+            pdf.drawCentredString(width_pt / 2, curr_y, f"Phone: {shop['phone']}")
+            curr_y -= 8
+
+            pdf.setLineWidth(0.8)
+            pdf.line(margin, curr_y, width_pt - margin, curr_y)
+            curr_y -= 10
+
+            pdf.setFont("Helvetica-Bold", 8.5)
+            pdf.drawCentredString(width_pt / 2, curr_y, "STATEMENT OF ACCOUNT (PENDING)")
+            curr_y -= 10
+
+            pdf.setFont("Helvetica", 7.0)
+            pdf.drawString(margin, curr_y, f"Customer: {cust_info['name'][:30]}")
+            curr_y -= 8.5
+            pdf.drawString(margin, curr_y, f"Date: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}")
+            curr_y -= 6
+
+            pdf.line(margin, curr_y, width_pt - margin, curr_y)
+            curr_y -= 9
+
+            pdf.setFont("Helvetica-Bold", 6.8)
+            pdf.drawString(margin, curr_y, "Date / Inv No")
+            pdf.drawRightString(width_pt - margin, curr_y, "Billed | Paid | Pending")
+            curr_y -= 5
+
+            pdf.setLineWidth(0.5)
+            pdf.line(margin, curr_y, width_pt - margin, curr_y)
+            curr_y -= 9
+
+            for tx in transactions:
+                pdf.setFont("Helvetica-Bold", 6.8)
+                pdf.drawString(margin, curr_y, f"INV-{tx['invoice_number']} ({tx['date'][:10]})")
+                pdf.setFont("Helvetica", 6.5)
+                pdf.drawRightString(width_pt - margin, curr_y, f"Rs.{tx['total']:,.0f} | Rs.{tx['paid']:,.0f} | Rs.{tx['pending']:,.0f}")
+                curr_y -= 10
+
+            pdf.setLineWidth(0.8)
+            pdf.line(margin, curr_y, width_pt - margin, curr_y)
+            curr_y -= 11
+
+            pdf.setFont("Helvetica", 7.0)
+            pdf.drawString(margin, curr_y, f"Total Invoiced: Rs.{cust_info['total_invoiced']:,.2f}")
+            curr_y -= 9
+            pdf.drawString(margin, curr_y, f"Total Paid: Rs.{cust_info['total_paid']:,.2f}")
+            curr_y -= 11
+
+            pdf.setFont("Helvetica-Bold", 8.5)
+            pdf.drawRightString(width_pt - margin, curr_y, f"NET DUES: Rs. {cust_info['net_dues']:,.2f}")
+            curr_y -= 9
+
+            words = amount_to_indian_words(cust_info['net_dues'])
+            if words:
+                pdf.setFont("Helvetica-Oblique", 6.0)
+                pdf.drawRightString(width_pt - margin, curr_y, f"({words})")
+                curr_y -= 8
+
+            curr_y -= 4
+            pdf.line(margin, curr_y, width_pt - margin, curr_y)
+            curr_y -= 8
+
+            pdf.setFont("Helvetica", 6.2)
+            pdf.drawCentredString(width_pt / 2, curr_y, "Please clear overdue balance at earliest.")
+            curr_y -= 7
+            pdf.setFont("Helvetica-Bold", 6.8)
+            pdf.drawCentredString(width_pt / 2, curr_y, "Powered by wokdens.com")
+
+            pdf.save()
+
+            from ui.invoice_ui import open_pdf_file
+            open_pdf_file(pdf_path)
+            messagebox.showinfo("Thermal Statement Generated", f"80mm Thermal Statement saved to:\n{pdf_path}", parent=self.frame)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate 80mm statement: {str(e)}", parent=self.frame)
 
 
     def filter_invoices(self, event=None):
@@ -1185,7 +1371,7 @@ class LedgerUI:
         def open_thermal_receipt():
             from ui.invoice_ui import generate_thermal_receipt_pdf, open_pdf_file
             from ui.thermal_printer import print_receipt_direct, find_thermal_printer
-            from database import INVOICES_DIR
+            from config import INVOICES_DIR
             t_printer = find_thermal_printer()
             if t_printer:
                 ok, msg = print_receipt_direct(
@@ -1206,42 +1392,29 @@ class LedgerUI:
                     )
                     return
 
-            safe_name = "".join(c for c in customer_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
-            thermal_filename = f"INV-{inv_number}_{safe_name}_80mm.pdf" if safe_name else f"INV-{inv_number}_80mm.pdf"
-            thermal_path = os.path.join(INVOICES_DIR, thermal_filename)
-            if os.path.exists(thermal_path):
-                open_pdf_file(thermal_path)
-            else:
-                generate_thermal_receipt_pdf(
-                    invoice_number=inv_number,
-                    customer_name=customer_name,
-                    items=invoice_items,
-                    grand_total=total,
-                    paid_amount=paid,
-                    note=note,
-                    date_str=date_str,
-                    open_file=True
-                )
+            generate_thermal_receipt_pdf(
+                invoice_number=inv_number,
+                customer_name=customer_name,
+                items=invoice_items,
+                grand_total=total,
+                paid_amount=paid,
+                note=note,
+                date_str=date_str,
+                open_file=True
+            )
 
         def open_a4_pdf():
-            from ui.invoice_ui import generate_a4_invoice_pdf, open_pdf_file
-            from database import INVOICES_DIR
-            safe_name = "".join(c for c in customer_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
-            a4_filename = f"INV-{inv_number}_{safe_name}.pdf" if safe_name else f"INV-{inv_number}.pdf"
-            a4_path = os.path.join(INVOICES_DIR, a4_filename)
-            if os.path.exists(a4_path):
-                open_pdf_file(a4_path)
-            else:
-                generate_a4_invoice_pdf(
-                    invoice_number=inv_number,
-                    customer_name=customer_name,
-                    items=invoice_items,
-                    grand_total=total,
-                    paid_amount=paid,
-                    note=note,
-                    date_str=date_str,
-                    open_file=True
-                )
+            from ui.invoice_ui import generate_a4_invoice_pdf
+            generate_a4_invoice_pdf(
+                invoice_number=inv_number,
+                customer_name=customer_name,
+                items=invoice_items,
+                grand_total=total,
+                paid_amount=paid,
+                note=note,
+                date_str=date_str,
+                open_file=True
+            )
 
         clear_bill_btn = tk.Button(
             button_frame,
