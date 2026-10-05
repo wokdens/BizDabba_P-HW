@@ -2113,6 +2113,35 @@ def seed_paints_and_hardware_demo_data(force=False):
     cursor = conn.cursor()
 
     try:
+        # Sample Customers (Delhi-based - exactly 10 profiles)
+        demo_customers = [
+            ("Sharma Contractors & Builders (Chawri Bazar)", "9810123456", "Plot 22, Chawri Bazar, Delhi - 110006"),
+            ("Rajesh Painter & Polish Works (Laxmi Nagar)", "9871987654", "Gali No. 4, Laxmi Nagar, Delhi - 110092"),
+            ("Verma Hardware & Sanitary Store (Rohini)", "9818554433", "Sector 7, Rohini, Delhi - 110085"),
+            ("Gupta Construction Co. (Karol Bagh)", "9811223344", "15 DB Gupta Road, Karol Bagh, Delhi - 110005"),
+            ("Malhotra Interiors & Paint Decor (South Ex)", "9899112233", "F-42, South Extension Part 1, Delhi - 110049"),
+            ("Aggarwal Hardware & Mill Store (Hauz Qazi)", "9810887766", "Shop 8, Lal Kuan, Hauz Qazi, Delhi - 110006"),
+            ("Choudhary Builders & Developers (Dwarka)", "9971234567", "Sector 12, Dwarka, Delhi - 110078"),
+            ("Kapoor Sanitary & Plumbing Works (Pitampura)", "9810334455", "MD Block, Pitampura, Delhi - 110034"),
+            ("Sunil Kumar (Civil Lines)", "9818001122", "12 Rajpur Road, Civil Lines, Delhi - 110054"),
+            ("Walk-in Cash Customer", "", "Counter Sale, Delhi - 110006")
+        ]
+        demo_customer_names = [c[0] for c in demo_customers]
+
+        # If force=True, wipe any non-paint/hardware products, electrical categories, and invoices
+        if force:
+            cursor.execute("DELETE FROM invoice_items")
+            cursor.execute("DELETE FROM invoices")
+            cursor.execute("DELETE FROM products")
+            cursor.execute("DELETE FROM categories")
+            try:
+                cursor.execute("DELETE FROM stock_adjustments")
+            except Exception:
+                pass
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('products', 'invoices', 'invoice_items', 'categories')")
+            placeholders = ",".join(["?"] * len(demo_customer_names))
+            cursor.execute(f"DELETE FROM customers WHERE name NOT IN ({placeholders})", demo_customer_names)
+
         # 1. Update shop profile to Delhi-based Paints & Hardware store if not already set
         cursor.execute("SELECT value FROM app_settings WHERE key = 'shop_name'")
         curr_name = cursor.fetchone()
@@ -2121,7 +2150,7 @@ def seed_paints_and_hardware_demo_data(force=False):
             cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('shop_phone', '+91-9811234567 / 011-23864500')")
             cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('shop_address', 'Shop No. 14, Hauz Qazi / Chawri Bazar, Delhi - 110006')")
 
-        # 2. Categories
+        # 2. Categories (Strictly Paints & Basic Hardware - Zero Electrical)
         categories = [
             "PAINTS - EMULSION & EXTERIOR",
             "PAINTS - ENAMEL & PRIMER",
@@ -2192,7 +2221,7 @@ def seed_paints_and_hardware_demo_data(force=False):
             # Hardware - Plumbing & Sanitary
             ("HARDWARE - PLUMBING & SANITARY", "CPVC Brass Elbow 1/2 inch", 95.0, 58.0, 75.0, "Pcs", 130),
             ("HARDWARE - PLUMBING & SANITARY", "CPVC Ball Valve 1 inch (Heavy)", 280.0, 175.0, 225.0, "Pcs", 50),
-            ("HARDWARE - PLUMBING & SANITARY", "PVC Conduit Pipe 25mm (3 Metre)", 120.0, 72.0, 95.0, "Length", 150),
+            ("HARDWARE - PLUMBING & SANITARY", "UPVC Plumbing Pipe 1 inch (3 Metre)", 120.0, 72.0, 95.0, "Length", 150),
             ("HARDWARE - PLUMBING & SANITARY", "CPVC Solvent Cement 250ml Tin", 240.0, 155.0, 195.0, "Tin", 60),
             ("HARDWARE - PLUMBING & SANITARY", "Brass Bib Tap 1/2 inch Long Body", 550.0, 340.0, 440.0, "Pcs", 35),
             ("HARDWARE - PLUMBING & SANITARY", "PTFE Teflon Tape (Pack of 10)", 150.0, 80.0, 115.0, "Pkt", 90),
@@ -2220,26 +2249,7 @@ def seed_paints_and_hardware_demo_data(force=False):
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Price')
                 """, (cat, name, mrp, pprice, sprice, unit, stock))
 
-        # 4. Sample Customers (Delhi-based - exactly 10 profiles)
-        demo_customers = [
-            ("Sharma Contractors & Builders (Chawri Bazar)", "9810123456", "Plot 22, Chawri Bazar, Delhi - 110006"),
-            ("Rajesh Painter & Polish Works (Laxmi Nagar)", "9871987654", "Gali No. 4, Laxmi Nagar, Delhi - 110092"),
-            ("Verma Hardware & Sanitary Store (Rohini)", "9818554433", "Sector 7, Rohini, Delhi - 110085"),
-            ("Gupta Construction Co. (Karol Bagh)", "9811223344", "15 DB Gupta Road, Karol Bagh, Delhi - 110005"),
-            ("Malhotra Interiors & Paint Decor (South Ex)", "9899112233", "F-42, South Extension Part 1, Delhi - 110049"),
-            ("Aggarwal Hardware & Mill Store (Hauz Qazi)", "9810887766", "Shop 8, Lal Kuan, Hauz Qazi, Delhi - 110006"),
-            ("Choudhary Builders & Developers (Dwarka)", "9971234567", "Sector 12, Dwarka, Delhi - 110078"),
-            ("Kapoor Sanitary & Plumbing Works (Pitampura)", "9810334455", "MD Block, Pitampura, Delhi - 110034"),
-            ("Sunil Kumar (Civil Lines)", "9818001122", "12 Rajpur Road, Civil Lines, Delhi - 110054"),
-            ("Walk-in Cash Customer", "", "Counter Sale, Delhi - 110006")
-        ]
-        demo_customer_names = [c[0] for c in demo_customers]
-        if force:
-            cursor.execute("DELETE FROM invoice_items")
-            cursor.execute("DELETE FROM invoices")
-            placeholders = ",".join(["?"] * len(demo_customer_names))
-            cursor.execute(f"DELETE FROM customers WHERE name NOT IN ({placeholders})", demo_customer_names)
-
+        # 4. Map Customer IDs (Delhi-based - exactly 10 profiles)
         cust_id_map = {}
         for cname, cphone, caddr in demo_customers:
             cursor.execute("SELECT id FROM customers WHERE name = ?", (cname,))

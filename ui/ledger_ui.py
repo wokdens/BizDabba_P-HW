@@ -159,6 +159,7 @@ class LedgerUI:
                 col,
                 width=width,
                 minwidth=35 if col == "S.No" else 50,
+                stretch=(col == "Customer Name"),
                 anchor="center" if col in ("S.No", "Total Pending", "Invoices Count") else "w"
             )
 
@@ -484,6 +485,7 @@ class LedgerUI:
                 col,
                 width=width,
                 minwidth=35 if col == "S.No" else 50,
+                stretch=(col in ("Invoice Number", "Note")),
                 anchor="center" if col in ("S.No", "Date", "Total", "Paid", "Pending", "Status") else "w"
             )
 
@@ -1084,13 +1086,14 @@ class LedgerUI:
 
         inv_id, inv_number, customer_name, date_str, total, paid, pending, note = invoice_data
 
-        # Create dialog with scrollbar - optimized height
+        # Create dialog with scrollbar - optimized height & responsive full-screen maximizing
         dialog = tk.Toplevel(self.parent)
         dialog.title(f"Update Payment - INV-{inv_number}")
-        dialog.geometry("900x650")
+        dialog.geometry("960x700")
+        dialog.minsize(820, 520)
 
         # Main canvas for scrolling
-        canvas = tk.Canvas(dialog)
+        canvas = tk.Canvas(dialog, highlightthickness=0)
         scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
 
@@ -1099,8 +1102,23 @@ class LedgerUI:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        frame_window_id = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+
+        def _on_canvas_configure(event):
+            # Dynamically stretch the scrollable_frame to match the canvas width when resized/maximized
+            canvas.itemconfig(frame_window_id, width=event.width)
+
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(event):
+            try:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            except Exception:
+                pass
+
+        dialog.bind("<MouseWheel>", _on_mousewheel)
+        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -1149,7 +1167,7 @@ class LedgerUI:
         # =========================
 
         items_frame = tk.LabelFrame(scrollable_frame, text="Invoice Items", padx=15, pady=15)
-        items_frame.pack(fill="x", padx=20, pady=10)
+        items_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
         items_table_frame = tk.Frame(
             items_frame,
@@ -1161,7 +1179,7 @@ class LedgerUI:
         items_table_frame.pack(fill="both", expand=True)
 
         columns = ("S.No", "Qty", "Product", "Price", "Unit", "Discount", "Discount On", "Total")
-        items_tree = ttk.Treeview(items_table_frame, columns=columns, show="headings", height=6)
+        items_tree = ttk.Treeview(items_table_frame, columns=columns, show="headings", height=8)
         items_scrollbar = ttk.Scrollbar(items_table_frame, orient="vertical", command=items_tree.yview)
         items_tree.configure(yscrollcommand=items_scrollbar.set)
 
@@ -1171,10 +1189,12 @@ class LedgerUI:
                 text=col,
                 anchor="center" if col in ("S.No", "Qty", "Price", "Unit", "Discount", "Discount On", "Total") else "w"
             )
-            width = 45 if col == "S.No" else (160 if col == "Product" else 95)
+            is_product = (col == "Product")
+            width = 50 if col == "S.No" else (300 if is_product else 95)
             items_tree.column(
                 col,
                 width=width,
+                stretch=is_product,
                 anchor="center" if col in ("S.No", "Qty", "Price", "Unit", "Discount", "Discount On", "Total") else "w"
             )
 
