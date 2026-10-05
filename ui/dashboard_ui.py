@@ -470,15 +470,15 @@ class DashboardUI:
     # =========================
 
     def show_security_audit_logs(self):
-        """Displays timestamped security audit log of all PIN-authorized operations."""
+        """Displays timestamped security audit log of all operations with live search & filtering."""
         if not request_admin_pin(self.frame, "view security audit logs"):
             return
 
-        logs = get_audit_logs(limit=200)
-
         dialog = tk.Toplevel(self.frame)
-        dialog.title("Security Audit Logs")
-        dialog.geometry("920x520")
+        dialog.title("Security Audit Logs & Activity Trail")
+        dialog.geometry("1020x620")
+        dialog.minsize(850, 480)
+        dialog.resizable(True, True)
         dialog.transient(self.frame.winfo_toplevel())
         dialog.grab_set()
 
@@ -486,20 +486,155 @@ class DashboardUI:
         dialog.update_idletasks()
         sw = dialog.winfo_screenwidth()
         sh = dialog.winfo_screenheight()
-        w, h = 920, 520
-        x = (sw - w) // 2
-        y = (sh - h) // 2
+        w, h = 1020, 620
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 2)
         dialog.geometry(f"{w}x{h}+{x}+{y}")
 
         header = tk.Frame(dialog, bg="#1e222d", pady=12)
         header.pack(fill="x")
         tk.Label(
             header,
-            text="🛡️ Security Audit Logs & Price Override Trail",
+            text="🛡️ Security Audit Logs & Invoice Revision History",
             font=("Arial", 14, "bold"),
             bg="#1e222d",
             fg="white"
         ).pack(side="left", padx=20)
+
+        # Controls frame: Search, Filter, Refresh, Export
+        ctrl_frame = tk.Frame(dialog, bg="#f8fafc", padx=15, pady=8)
+        ctrl_frame.pack(fill="x")
+
+        # Search Entry
+        tk.Label(ctrl_frame, text="🔍 Search:", font=("Arial", 10, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(0, 6))
+        search_var = tk.StringVar()
+        search_entry = tk.Entry(ctrl_frame, textvariable=search_var, font=("Arial", 10), width=28)
+        search_entry.pack(side="left", padx=(0, 15))
+
+        filter_var = tk.StringVar(value="ALL")
+
+        # Status count label
+        count_lbl = tk.Label(ctrl_frame, text="", font=("Arial", 9, "italic"), bg="#f8fafc", fg="#64748b")
+        count_lbl.pack(side="left", padx=10)
+
+        all_logs_data = []
+
+        # Category buttons bar
+        cat_frame = tk.Frame(dialog, bg="#e2e8f0", padx=15, pady=4)
+        cat_frame.pack(fill="x")
+        tk.Label(cat_frame, text="Filter by:", font=("Arial", 8, "bold"), bg="#e2e8f0", fg="#475569").pack(side="left", padx=(0, 6))
+
+        # Treeview frame
+        tree_frame = tk.Frame(dialog, padx=15, pady=8)
+        tree_frame.pack(fill="both", expand=True)
+
+        columns = ("ID", "Timestamp", "Action Type", "Description", "Authorized By")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
+
+        tree.heading("ID", text="ID", anchor="center")
+        tree.heading("Timestamp", text="Timestamp", anchor="w")
+        tree.heading("Action Type", text="Action Type", anchor="w")
+        tree.heading("Description", text="Event Description & Revision Details", anchor="w")
+        tree.heading("Authorized By", text="Authorized By", anchor="center")
+
+        tree.column("ID", width=55, minwidth=40, anchor="center")
+        tree.column("Timestamp", width=160, minwidth=140, anchor="w")
+        tree.column("Action Type", width=155, minwidth=120, anchor="w")
+        tree.column("Description", width=510, minwidth=300, anchor="w")
+        tree.column("Authorized By", width=130, minwidth=100, anchor="center")
+
+        tree.tag_configure("created", foreground="#047857")
+        tree.tag_configure("modified", foreground="#b45309", font=("Arial", 9, "bold"))
+        tree.tag_configure("danger", foreground="#b91c1c", font=("Arial", 9, "bold"))
+        tree.tag_configure("normal", foreground="#1e293b")
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def apply_filters(*args):
+            q = search_var.get().strip().lower()
+            f_cat = filter_var.get()
+
+            filtered = []
+            for row in all_logs_data:
+                act = str(row[2])
+                desc = str(row[3])
+                auth = str(row[4])
+                ts = str(row[1])
+
+                # Category filter
+                if f_cat == "INVOICES" and not ("INVOICE" in act or "BILL" in act):
+                    continue
+                elif f_cat == "STOCK" and not ("STOCK" in act or "CATALOG" in act or "PRODUCT" in act or "RENUMBER" in act):
+                    continue
+                elif f_cat == "SECURITY" and not ("AUTH" in act or "PIN" in act or "ROLE" in act or "BACKUP" in act or "RESTORE" in act or "RESET" in act or "USB" in act or "CSV" in act or "SYSTEM" in act):
+                    continue
+
+                # Search text filter
+                if q:
+                    combined = f"{act} {desc} {auth} {ts}".lower()
+                    if q not in combined:
+                        continue
+
+                filtered.append(row)
+
+            # Render in table
+            for itm in tree.get_children():
+                tree.delete(itm)
+
+            for log in filtered:
+                act = str(log[2])
+                tag = "normal"
+                if "MODIFIED" in act or "RECALL" in act:
+                    tag = "modified"
+                elif "CANCELLED" in act or "RESET" in act:
+                    tag = "danger"
+                elif "CREATED" in act or "INIT" in act or "SETUP" in act:
+                    tag = "created"
+                tree.insert("", "end", values=log, tags=(tag,))
+
+            count_lbl.config(text=f"Showing {len(filtered)} of {len(all_logs_data)} events")
+
+        search_var.trace_add("write", apply_filters)
+
+        def set_filter(cat):
+            filter_var.set(cat)
+            apply_filters()
+
+        for lbl, cat_val in [("All Events", "ALL"), ("Invoices (Create/Edit/Cancel)", "INVOICES"), ("Stock & Inventory", "STOCK"), ("Admin & Security", "SECURITY")]:
+            tk.Button(
+                cat_frame,
+                text=lbl,
+                command=lambda c=cat_val: set_filter(c),
+                font=("Arial", 8),
+                bg="#ffffff",
+                relief="groove",
+                padx=6,
+                pady=1
+            ).pack(side="left", padx=2)
+
+        def load_logs():
+            nonlocal all_logs_data
+            all_logs_data = get_audit_logs(limit=300)
+            apply_filters()
+
+        # Action buttons in ctrl_frame
+        btn_box = tk.Frame(ctrl_frame, bg="#f8fafc")
+        btn_box.pack(side="right")
+
+        refresh_btn = tk.Button(
+            btn_box,
+            text="🔄 Refresh",
+            command=load_logs,
+            bg="#0284c7",
+            fg="white",
+            font=("Arial", 9, "bold"),
+            padx=8,
+            pady=2
+        )
+        refresh_btn.pack(side="left", padx=4)
 
         def export_audit_csv():
             from ui.csv_security import export_encrypted_csv_archive
@@ -519,7 +654,7 @@ class DashboardUI:
                     target_path=file_path,
                     base_name="security_audit_logs.csv",
                     header_row=headers,
-                    data_rows=logs
+                    data_rows=all_logs_data
                 )
                 record_audit_log("CSV_EXPORT", f"Exported password-protected security audit logs to {saved_zip}")
                 messagebox.showinfo(
@@ -532,47 +667,24 @@ class DashboardUI:
             except Exception as e:
                 messagebox.showerror("Export Error", str(e), parent=dialog)
 
-        tk.Button(
-            header,
-            text="📥 Export Logs (CSV)",
+        export_btn = tk.Button(
+            btn_box,
+            text="📥 Export (CSV)",
             command=export_audit_csv,
-            bg="#28a745",
+            bg="#16a34a",
             fg="white",
             font=("Arial", 9, "bold"),
-            padx=10,
-            pady=3
-        ).pack(side="right", padx=15)
+            padx=8,
+            pady=2
+        )
+        export_btn.pack(side="left", padx=4)
 
-        # Treeview
-        tree_frame = tk.Frame(dialog, padx=15, pady=10)
-        tree_frame.pack(fill="both", expand=True)
-
-        columns = ("ID", "Timestamp", "Action Type", "Description", "Authorized By")
-        tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
-
-        tree.heading("ID", text="ID", anchor="center")
-        tree.heading("Timestamp", text="Timestamp", anchor="w")
-        tree.heading("Action Type", text="Action Type", anchor="w")
-        tree.heading("Description", text="Description / Details", anchor="w")
-        tree.heading("Authorized By", text="Authorized By", anchor="center")
-
-        tree.column("ID", width=50, anchor="center")
-        tree.column("Timestamp", width=170, anchor="w")
-        tree.column("Action Type", width=150, anchor="w")
-        tree.column("Description", width=420, anchor="w")
-        tree.column("Authorized By", width=110, anchor="center")
-
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
-        tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        for log in logs:
-            tree.insert("", "end", values=log)
+        # Initial load
+        load_logs()
 
         footer = tk.Label(
             dialog,
-            text="⚡ Powered by wokdens.com",
+            text="⚡ Powered by wokdens.com • Delhi Wholesale & Retail Management",
             font=("Arial", 8, "italic"),
             fg="#888888"
         )

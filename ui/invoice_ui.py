@@ -8,7 +8,8 @@ from database import (
     get_customer_names_with_phone,
     update_saved_invoice,
     get_invoice_with_items,
-    get_last_active_invoice
+    get_last_active_invoice,
+    record_audit_log
 )
 
 from ui.autocomplete_combobox import (
@@ -19,13 +20,19 @@ from ui.customer_popup import (
     CustomerPopup
 )
 
+from ui.admin_auth_dialog import (
+    request_admin_pin,
+    is_admin_mode
+)
+
 from reportlab.pdfgen import canvas
 from datetime import datetime
 
 import os
+import shutil
 import textwrap 
 
-from config import INVOICES_DIR
+from config import INVOICES_DIR, PENDRIVE_DIR, get_pen_drive_dir
 
 
 def _normalize_items(raw_items):
@@ -291,6 +298,18 @@ def generate_thermal_receipt_pdf(
 
     pdf.save()
 
+    # Guarantee invoice is saved strictly to Pen Drive storage
+    pd_dir = PENDRIVE_DIR or get_pen_drive_dir()
+    if pd_dir and os.path.isdir(pd_dir):
+        pd_inv_dir = os.path.join(pd_dir, "invoices")
+        os.makedirs(pd_inv_dir, exist_ok=True)
+        pd_file_path = os.path.join(pd_inv_dir, os.path.basename(path))
+        if os.path.abspath(path).lower() != os.path.abspath(pd_file_path).lower():
+            try:
+                shutil.copy2(path, pd_file_path)
+            except Exception:
+                pass
+
     if open_file:
         open_pdf_file(path)
 
@@ -511,6 +530,18 @@ def generate_a4_invoice_pdf(
     pdf.drawRightString(555, footer_text_y, "Powered by wokdens.com")
 
     pdf.save()
+
+    # Guarantee invoice is saved strictly to Pen Drive storage
+    pd_dir = PENDRIVE_DIR or get_pen_drive_dir()
+    if pd_dir and os.path.isdir(pd_dir):
+        pd_inv_dir = os.path.join(pd_dir, "invoices")
+        os.makedirs(pd_inv_dir, exist_ok=True)
+        pd_file_path = os.path.join(pd_inv_dir, os.path.basename(path))
+        if os.path.abspath(path).lower() != os.path.abspath(pd_file_path).lower():
+            try:
+                shutil.copy2(path, pd_file_path)
+            except Exception:
+                pass
 
     if open_file:
         open_pdf_file(path)
@@ -1733,8 +1764,12 @@ class InvoiceUI:
         except Exception:
             pass
 
-    def load_invoice_for_editing(self, invoice_id):
-        """Loads an existing invoice and its items into the cart for editing."""
+    def load_invoice_for_editing(self, invoice_id, authorized=False):
+        """Loads an existing invoice and its items into the cart for editing (Admin PIN required)."""
+        if not authorized and not is_admin_mode():
+            if not request_admin_pin(self.frame.winfo_toplevel(), f"edit Invoice #{invoice_id}"):
+                return False
+
         inv_data = get_invoice_with_items(invoice_id)
         if not inv_data:
             messagebox.showerror(
@@ -1755,6 +1790,13 @@ class InvoiceUI:
         self.editing_invoice_id = inv_data["id"]
         self.editing_invoice_number = inv_data["invoice_number"]
         self.original_invoice_total = inv_data["total"]
+
+        # Audit trail: document who opened this invoice for modification
+        record_audit_log(
+            "INVOICE_EDIT_LOADED",
+            f"Invoice #{inv_data['invoice_number']} ({inv_data['customer_name']}) loaded into billing editor by Admin.",
+            authorized_by="Admin PIN"
+        )
 
         # Populate customer
         cust_name = inv_data["customer_name"]
@@ -1803,7 +1845,7 @@ class InvoiceUI:
         self.clear_invoice()
 
     def recall_last_bill(self):
-        """Recalls the most recent active invoice into the billing cart for quick editing."""
+        """Recalls the most recent active invoice into the billing cart for quick editing (Admin PIN required)."""
         last_inv = get_last_active_invoice()
         if not last_inv:
             messagebox.showinfo(
@@ -1813,6 +1855,11 @@ class InvoiceUI:
             )
             return
 
+        # Security: Only Admin can recall an invoice for editing
+        if not is_admin_mode():
+            if not request_admin_pin(self.frame.winfo_toplevel(), f"recall and edit Invoice #{last_inv['invoice_number']}"):
+                return
+
         if self.cart_items:
             if not messagebox.askyesno(
                 "Confirm Recall",
@@ -1821,7 +1868,12 @@ class InvoiceUI:
             ):
                 return
 
-        self.load_invoice_for_editing(last_inv["id"])
+        record_audit_log(
+            "INVOICE_RECALLED",
+            f"Recalled Invoice #{last_inv['invoice_number']} ({last_inv['customer_name']}) for editing.",
+            authorized_by="Admin PIN"
+        )
+        self.load_invoice_for_editing(last_inv["id"], authorized=True)
 
     def clear_invoice(self):
 
@@ -2028,6 +2080,26 @@ class InvoiceUI:
             note=note,
             open_file=(format_type == "a4")
         )
+
+        # Clean up any older PDF versions for this invoice number when editing
+        if is_edit:
+            try:
+                clean_inv_str = str(invoice_id).replace("INV-", "").strip()
+                search_dirs = [INVOICES_DIR]
+                pd_dir = PENDRIVE_DIR or get_pen_drive_dir()
+                if pd_dir and os.path.isdir(pd_dir):
+                    search_dirs.append(os.path.join(pd_dir, "invoices"))
+                current_bases = {os.path.basename(thermal_path), os.path.basename(a4_path)}
+                for s_dir in set(search_dirs):
+                    if s_dir and os.path.isdir(s_dir):
+                        for f_name in os.listdir(s_dir):
+                            if (f_name.startswith(f"INV-{clean_inv_str}_") or f_name == f"INV-{clean_inv_str}.pdf") and f_name not in current_bases:
+                                try:
+                                    os.remove(os.path.join(s_dir, f_name))
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
 
         printed_direct = False
         direct_msg = ""

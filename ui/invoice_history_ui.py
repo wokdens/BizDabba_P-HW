@@ -449,6 +449,10 @@ class InvoiceHistoryUI:
             )
             return
 
+        # Security: Require Admin PIN to edit an existing invoice
+        if not request_admin_pin(self.frame.winfo_toplevel(), f"edit Invoice {inv_display}"):
+            return
+
         if not messagebox.askyesno(
             "Edit Invoice in Billing",
             f"Load {inv_display} into the Sales Invoice screen for editing?\n\n"
@@ -460,7 +464,7 @@ class InvoiceHistoryUI:
             return
 
         if self.app and hasattr(self.app, "open_invoice"):
-            self.app.open_invoice(invoice_id_to_edit=int(inv_iid))
+            self.app.open_invoice(invoice_id_to_edit=int(inv_iid), authorized=True)
         else:
             messagebox.showerror("Error", "Main application navigation reference is unavailable.", parent=self.frame.winfo_toplevel())
 

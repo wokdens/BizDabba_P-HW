@@ -302,7 +302,8 @@ def run_exhaustive_suite():
             assert stock_after_sale == initial_stock_a - 30, f"Expected {initial_stock_a - 30}, got {stock_after_sale}"
 
             # 2. Recall the bill into billing cart (Customer reduces from 30 to 27 units)
-            inv_ui.recall_last_bill()
+            with patch('ui.invoice_ui.request_admin_pin', return_value=True):
+                inv_ui.recall_last_bill()
             assert inv_ui.editing_invoice_id is not None, "Recall did not activate editing mode!"
             assert len(inv_ui.cart_items) == 1, "Recalled cart should contain 1 item!"
             assert inv_ui.cart_items[0]["quantity"] == 30, "Recalled item quantity should be 30!"
@@ -340,7 +341,8 @@ def run_exhaustive_suite():
             assert status_row[1] == 0.0, f"Cancelled invoice pending should be 0.0, got {status_row[1]}"
 
             # 4. Verify cannot edit a cancelled invoice
-            app.open_invoice(invoice_id_to_edit=target_inv_id)
+            with patch('ui.invoice_ui.request_admin_pin', return_value=True):
+                app.open_invoice(invoice_id_to_edit=target_inv_id)
             assert app.current_ui.editing_invoice_id is None, "Should not be able to edit a cancelled invoice!"
 
             # 5. Verify Invoice History displays CANCELLED status

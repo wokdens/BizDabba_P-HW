@@ -1,6 +1,28 @@
 import os
 import sys
 
+import string
+
+def get_pen_drive_dir():
+    """
+    Detects if running directly from a Pen Drive or if a Pen Drive containing
+    'BizDabba PHWP' is currently mounted on any removable/external drive (D: to Z:).
+    Returns the absolute path to the Pen Drive app folder, or None.
+    """
+    # 1. If running as a frozen executable on a non-C drive
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        if not exe_dir.lower().startswith("c:"):
+            return exe_dir
+    # 2. Check external drive letters (D: through Z:)
+    for d in string.ascii_uppercase:
+        if d == 'C':
+            continue
+        candidate = f"{d}:\\BizDabba PHWP"
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
 # Handle both development and PyInstaller bundle environments
 if getattr(sys, 'frozen', False):
     # Running as PyInstaller bundle
@@ -9,9 +31,16 @@ else:
     # Running as script
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Ensure required application directories exist
+# Pen Drive detection: If a Pen Drive is plugged in or running from it, prioritize it
+PENDRIVE_DIR = get_pen_drive_dir()
+
+# Invoices are strictly targeted to the Pen Drive whenever attached or running from it
+if PENDRIVE_DIR and os.path.isdir(PENDRIVE_DIR):
+    INVOICES_DIR = os.path.join(PENDRIVE_DIR, "invoices")
+else:
+    INVOICES_DIR = os.path.join(BASE_DIR, "invoices")
+
 DB_DIR = os.path.join(BASE_DIR, "database")
-INVOICES_DIR = os.path.join(BASE_DIR, "invoices")
 BACKUPS_DIR = os.path.join(BASE_DIR, "backups")
 
 # Dedicated rolling auto-backups directory strictly on Pen Drive (Zero Host Computer Footprint)

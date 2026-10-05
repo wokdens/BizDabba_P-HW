@@ -298,7 +298,7 @@ class MainWindow:
     # SALES INVOICE
     # =========================
 
-    def open_invoice(self, invoice_id_to_edit=None):
+    def open_invoice(self, invoice_id_to_edit=None, authorized=False):
 
         self.clear_content()
 
@@ -308,7 +308,7 @@ class MainWindow:
 
         self.current_ui = InvoiceUI(self.content_frame, app=self)
         if invoice_id_to_edit:
-            self.current_ui.load_invoice_for_editing(invoice_id_to_edit)
+            self.current_ui.load_invoice_for_editing(invoice_id_to_edit, authorized=authorized)
 
     # =========================
     # INVOICE HISTORY

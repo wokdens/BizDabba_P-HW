@@ -1075,6 +1075,16 @@ def save_complete_invoice(
             item["product_id"]
         ))
 
+    # 6. Record audit log
+    try:
+        cursor.execute("CREATE TABLE IF NOT EXISTS security_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT, description TEXT, authorized_by TEXT DEFAULT 'Owner PIN', timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("""
+        INSERT INTO security_audit_logs (action_type, description, authorized_by, timestamp)
+        VALUES ('INVOICE_CREATED', ?, 'Staff / Counter', datetime('now', 'localtime'))
+        """, (f"Invoice #{invoice_number} created for {customer_name}. Total: Rs. {grand_total:,.2f} (Paid: Rs. {paid_amount:,.2f}, Pending: Rs. {pending:,.2f}). Items: {len(cart_items)}.",))
+    except Exception:
+        pass
+
     conn.commit()
 
     conn.close()
@@ -1100,7 +1110,12 @@ def cancel_invoice(invoice_id, authorized_by="Owner PIN"):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id, invoice_number, COALESCE(status, 'ACTIVE'), total FROM invoices WHERE id = ?", (invoice_id,))
+        cursor.execute("""
+        SELECT i.id, i.invoice_number, COALESCE(i.status, 'ACTIVE'), i.total, COALESCE(c.name, 'Walk-in Customer')
+        FROM invoices i
+        LEFT JOIN customers c ON i.customer_id = c.id
+        WHERE i.id = ?
+        """, (invoice_id,))
         row = cursor.fetchone()
         if not row:
             return False, f"Invoice #{invoice_id} not found."
@@ -1109,6 +1124,7 @@ def cancel_invoice(invoice_id, authorized_by="Owner PIN"):
 
         inv_num = row[1]
         total_val = row[3]
+        cust_name = row[4]
 
         # 1. Restore stock
         cursor.execute("""
@@ -1137,10 +1153,11 @@ def cancel_invoice(invoice_id, authorized_by="Owner PIN"):
         """, (invoice_id,))
 
         # 3. Audit log
+        cursor.execute("CREATE TABLE IF NOT EXISTS security_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT, description TEXT, authorized_by TEXT DEFAULT 'Owner PIN', timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         cursor.execute("""
         INSERT INTO security_audit_logs (action_type, description, authorized_by, timestamp)
-        VALUES ('INVOICE_CANCELLED', ?, ?, datetime('now', 'localtime'))
-        """, (f"Invoice #{inv_num} (₹ {total_val:,.2f}) cancelled. Restored {total_restored} items across {len(items)} products.", authorized_by))
+        VALUES ('INVOICE_CANCELLED', ?, 'Admin PIN', datetime('now', 'localtime'))
+        """, (f"Invoice #{inv_num} ({cust_name}, Rs. {total_val:,.2f}) voided & cancelled. Restored {total_restored} units back to inventory.",))
 
         conn.commit()
 
@@ -1263,7 +1280,12 @@ def update_saved_invoice(
     cursor = conn.cursor()
     try:
         # 1. Fetch invoice info & check status
-        cursor.execute("SELECT id, invoice_number, COALESCE(status, 'ACTIVE') FROM invoices WHERE id = ?", (invoice_id,))
+        cursor.execute("""
+        SELECT i.id, i.invoice_number, COALESCE(i.status, 'ACTIVE'), i.total, i.paid, i.pending, COALESCE(c.name, 'Walk-in Customer')
+        FROM invoices i
+        LEFT JOIN customers c ON i.customer_id = c.id
+        WHERE i.id = ?
+        """, (invoice_id,))
         row = cursor.fetchone()
         if not row:
             raise ValueError(f"Invoice #{invoice_id} not found.")
@@ -1271,6 +1293,10 @@ def update_saved_invoice(
             raise ValueError(f"Invoice #{row[1]} is cancelled and cannot be modified.")
 
         inv_num = row[1]
+        old_total = row[3] or 0.0
+        old_paid = row[4] or 0.0
+        old_pending = row[5] or 0.0
+        old_cust = row[6] or customer_name
 
         # 2. Get old items to restore stock
         cursor.execute("SELECT product_id, quantity FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
@@ -1338,11 +1364,18 @@ def update_saved_invoice(
             invoice_id
         ))
 
-        # 6. Audit log
+        # 6. Audit log: Document who edited which invoice and what changed
+        audit_desc = (
+            f"Invoice #{inv_num} ({customer_name}) edited. "
+            f"Total: Rs. {old_total:,.2f} -> Rs. {grand_total:,.2f} "
+            f"(Paid: Rs. {paid_amount:,.2f}, Pending: Rs. {pending:,.2f}). "
+            f"Items: {len(cart_items)}."
+        )
+        cursor.execute("CREATE TABLE IF NOT EXISTS security_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT, description TEXT, authorized_by TEXT DEFAULT 'Owner PIN', timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         cursor.execute("""
         INSERT INTO security_audit_logs (action_type, description, authorized_by, timestamp)
-        VALUES ('INVOICE_MODIFIED', ?, 'Owner PIN', datetime('now', 'localtime'))
-        """, (f"Invoice #{inv_num} updated with {len(cart_items)} items. Total: ₹ {grand_total:,.2f}",))
+        VALUES ('INVOICE_MODIFIED', ?, 'Admin PIN', datetime('now', 'localtime'))
+        """, (audit_desc,))
 
         conn.commit()
     except Exception as e:
@@ -2458,6 +2491,33 @@ def seed_paints_and_hardware_demo_data(force=False):
                     ("PTFE Teflon Tape (Pack of 10)", 1, 150.0, 115.0, 0, "Price", 115.0, "Pkt")
                 ]
             )
+
+        # Seed realistic security audit trail for demonstration
+        cursor.execute("CREATE TABLE IF NOT EXISTS security_audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action_type TEXT, description TEXT, authorized_by TEXT DEFAULT 'Owner PIN', timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("DELETE FROM security_audit_logs")
+        sample_audit_events = [
+            ("SYSTEM_INIT", "System initialized for Delhi Paints & Hardware Store (Hauz Qazi / Chawri Bazar)", "Admin PIN", "datetime('now', '-3 days', '-8 hours')"),
+            ("CATALOG_SETUP", "Imported 51 Paints & Hardware products across 8 categories (Asian Paints, Berger, Nerolac, Hardware, Plumbing)", "Admin PIN", "datetime('now', '-3 days', '-7 hours')"),
+            ("INVOICE_CREATED", "Invoice #1001 created for Sharma Contractors & Builders (Chawri Bazar). Total: Rs. 18,646.80 (Paid: Rs. 12,000.00, Pending: Rs. 6,646.80). Items: 3.", "Counter Staff", "datetime('now', '-2 days', '-4 hours')"),
+            ("INVOICE_CREATED", "Invoice #1002 created for Sharma Contractors & Builders (Chawri Bazar). Total: Rs. 8,450.00 (Paid: Rs. 5,000.00, Pending: Rs. 3,450.00). Items: 4.", "Counter Staff", "datetime('now', '-1 days', '-2 hours')"),
+            ("INVOICE_CREATED", "Invoice #1003 created for Rajesh Painter & Polish Works (Laxmi Nagar). Total: Rs. 5,680.00 (Paid: Rs. 3,000.00, Pending: Rs. 2,680.00). Items: 5.", "Counter Staff", "datetime('now', '-1 days', '-5 hours')"),
+            ("INVOICE_CREATED", "Invoice #1004 created for Verma Hardware & Sanitary Store (Rohini). Total: Rs. 14,350.00 (Paid: Rs. 10,000.00, Pending: Rs. 4,350.00). Items: 5.", "Counter Staff", "datetime('now', '-1 days', '-1 hours')"),
+            ("INVOICE_CREATED", "Invoice #1005 created for Gupta Construction Co. (Karol Bagh). Total: Rs. 21,500.00 (Paid: Rs. 15,000.00, Pending: Rs. 6,500.00). Items: 3.", "Counter Staff", "datetime('now', '-19 hours')"),
+            ("INVOICE_EDIT_LOADED", "Invoice #1005 (Gupta Construction Co. (Karol Bagh)) loaded into billing editor by Admin.", "Admin PIN", "datetime('now', '-18 hours', '-10 minutes')"),
+            ("INVOICE_MODIFIED", "Invoice #1005 (Gupta Construction Co. (Karol Bagh)) edited. Total: Rs. 21,500.00 -> Rs. 24,600.00 (Paid: Rs. 15,000.00, Pending: Rs. 9,600.00). Items: 4.", "Admin PIN", "datetime('now', '-18 hours')"),
+            ("INVOICE_CREATED", "Invoice #1006 created for Malhotra Interiors & Paint Decor (South Ex). Total: Rs. 16,800.00 (Paid: Rs. 10,000.00, Pending: Rs. 6,800.00). Items: 5.", "Counter Staff", "datetime('now', '-14 hours')"),
+            ("INVOICE_CREATED", "Invoice #1007 created for Aggarwal Hardware & Mill Store (Hauz Qazi). Total: Rs. 11,200.00 (Paid: Rs. 7,000.00, Pending: Rs. 4,200.00). Items: 5.", "Counter Staff", "datetime('now', '-8 hours')"),
+            ("INVOICE_CREATED", "Invoice #1008 created for Choudhary Builders & Developers (Dwarka). Total: Rs. 32,500.00 (Paid: Rs. 20,000.00, Pending: Rs. 12,500.00). Items: 5.", "Counter Staff", "datetime('now', '-5 hours')"),
+            ("INVOICE_CREATED", "Invoice #1009 created for Kapoor Sanitary & Plumbing Works (Pitampura). Total: Rs. 7,850.00 (Paid: Rs. 5,000.00, Pending: Rs. 2,850.00). Items: 5.", "Counter Staff", "datetime('now', '-3 hours')"),
+            ("INVOICE_CREATED", "Invoice #1010 created for Sunil Kumar (Civil Lines). Total: Rs. 3,450.00 (Paid: Rs. 3,450.00, Pending: Rs. 0.00). Items: 4.", "Counter Staff", "datetime('now', '-1 hours')"),
+            ("INVOICE_CREATED", "Invoice #1011 created for Walk-in Cash Customer. Total: Rs. 1,915.00 (Paid: Rs. 1,915.00, Pending: Rs. 0.00). Items: 3.", "Counter Staff", "datetime('now', '-25 minutes')"),
+            ("USB_SAVE", "All database records, stock inventory & sales invoices synchronized to Pen Drive storage.", "Admin PIN", "datetime('now', '-5 minutes')")
+        ]
+        for act, desc, auth, ts_expr in sample_audit_events:
+            cursor.execute(f"""
+            INSERT INTO security_audit_logs(action_type, description, authorized_by, timestamp)
+            VALUES (?, ?, ?, {ts_expr})
+            """, (act, desc, auth))
 
         # Mark demo_seed_skipped as '0' so demo data is acknowledged
         cursor.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES('demo_seed_skipped', '0')")

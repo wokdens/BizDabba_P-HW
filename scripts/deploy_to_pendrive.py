@@ -13,12 +13,8 @@ def deploy():
         print("ERROR: Drive D:\\ is not mounted or accessible!")
         return False
         
-    if os.path.exists(dest):
-        print(f"Removing existing {dest}...")
-        shutil.rmtree(dest, ignore_errors=True)
-        
     print(f"Copying files from {src} to {dest}...")
-    shutil.copytree(src, dest)
+    shutil.copytree(src, dest, dirs_exist_ok=True)
     print("Files copied successfully!")
     
     # Verify the database on the USB drive
