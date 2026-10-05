@@ -294,7 +294,7 @@ def generate_thermal_receipt_pdf(
 
     curr_y -= 9
     pdf.setFont("Helvetica-Bold", 7.0)
-    pdf.drawCentredString(width / 2, curr_y, "Powered by wokdens.com")
+    pdf.drawCentredString(width / 2, curr_y, "BizDabba by Wokdens.com")
 
     pdf.save()
 
@@ -527,7 +527,7 @@ def generate_a4_invoice_pdf(
 
     pdf.setFont("Helvetica-Bold", 8)
     pdf.setFillColorRGB(0.35, 0.35, 0.35)
-    pdf.drawRightString(555, footer_text_y, "Powered by wokdens.com")
+    pdf.drawRightString(555, footer_text_y, "BizDabba by Wokdens.com")
 
     pdf.save()
 
@@ -1214,7 +1214,7 @@ class InvoiceUI:
 
         branding_label = tk.Label(
             line2,
-            text="⚡ Powered by wokdens.com",
+            text="⚡ BizDabba by Wokdens.com",
             font=("Arial", 9, "italic"),
             fg="#888888",
             bg="#f8f9fa"

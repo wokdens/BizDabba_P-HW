@@ -278,7 +278,7 @@ def format_esc_pos_receipt(invoice_number, customer_name, items, grand_total, pa
     out.extend(ALIGN_CENTER + b'------------------------------------------------\n')
     out.extend(b'Goods exchangeable in 7 days in sealed pack.\n')
     out.extend(b'No return on tinted paints. GST applicable.\n')
-    out.extend(BOLD_ON + b'Powered by wokdens.com\n' + BOLD_OFF)
+    out.extend(BOLD_ON + b'BizDabba by Wokdens.com\n' + BOLD_OFF)
     out.extend(FEED_CUT)
     return bytes(out)
 

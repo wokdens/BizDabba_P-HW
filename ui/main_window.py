@@ -29,6 +29,7 @@ class MainWindow:
         # =========================
         footer_frame = tk.Frame(root, bg="#1e222d", height=32)
         footer_frame.pack(side="bottom", fill="x")
+        self.footer_frame = footer_frame
 
         self.status_lbl = tk.Label(
             footer_frame,
@@ -38,6 +39,21 @@ class MainWindow:
             fg="#28a745"
         )
         self.status_lbl.pack(side="left", padx=15, pady=5)
+
+        self.license_upgrade_btn = tk.Button(
+            footer_frame,
+            text="🔑 Activate Master License",
+            font=("Arial", 8, "bold"),
+            bg="#b45309",
+            fg="white",
+            activebackground="#92400e",
+            activeforeground="white",
+            padx=8,
+            pady=1,
+            relief="flat",
+            cursor="hand2",
+            command=self.open_master_activation
+        )
 
         center_lbl = tk.Label(
             footer_frame,
@@ -50,7 +66,7 @@ class MainWindow:
 
         branding_lbl = tk.Label(
             footer_frame,
-            text="⚡ Powered by wokdens.com ",
+            text="⚡ BizDabba by Wokdens.com ",
             font=("Arial", 9, "bold"),
             bg="#1e222d",
             fg="#ffcc00"
@@ -230,6 +246,9 @@ class MainWindow:
         # Default page
         self.current_ui = None
         self.open_inventory()
+
+        # Update initial license status indicator in footer
+        self.update_license_ui()
 
     # =========================
     # CLEAR CONTENT
@@ -533,4 +552,31 @@ class MainWindow:
 
         toast.after(1000, lambda: countdown(2))
 
+    def update_license_ui(self):
+        """Refreshes footer status badge and master upgrade button based on license state."""
+        try:
+            from license_manager import is_master_activated, get_demo_launches_remaining
+            if is_master_activated():
+                self.status_lbl.config(
+                    text=" 🟢 Lifetime License | Safe USB Mode ",
+                    fg="#28a745"
+                )
+                self.license_upgrade_btn.pack_forget()
+            else:
+                remaining = get_demo_launches_remaining()
+                self.status_lbl.config(
+                    text=f" 🟡 Demo Mode ({remaining}/50 left) | Safe USB Mode ",
+                    fg="#ffc107"
+                )
+                self.license_upgrade_btn.pack(side="left", padx=6, pady=4)
+        except Exception as e:
+            print(f"Update license UI notice: {e}")
+
+    def open_master_activation(self):
+        """Opens in-app Master License Key upgrade dialog."""
+        try:
+            from ui.license_dialog import prompt_master_license_upgrade
+            prompt_master_license_upgrade(self.root, on_success_callback=self.update_license_ui)
+        except Exception as e:
+            print(f"Open master activation notice: {e}")
 

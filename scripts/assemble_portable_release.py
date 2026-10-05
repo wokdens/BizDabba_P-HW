@@ -69,7 +69,7 @@ def assemble_release():
     # 5. Create README_PEN_DRIVE_QUICKSTART.txt
     readme_content = """================================================================================
    BIZDABBA PHWP - PAINTS & HARDWARE PORTABLE PEN DRIVE EDITION
-   Powered by wokdens.com | Delhi Wholesale & Retail Business Suite
+   BizDabba by Wokdens.com | Delhi Wholesale & Retail Business Suite
 ================================================================================
 
 WELCOME TO BIZDABBA PHWP (PORTABLE USB EDITION)
@@ -169,7 +169,22 @@ Every page featuring pending payments supports BOTH printing modes:
 • Master Password for Encrypted CSV Exports: Wokdens@CSV#2026
 
 --------------------------------------------------------------------------------
-   ⚡ Powered by wokdens.com | Quality Software for Growing Businesses
+4. SOFTWARE LICENSE KEYS & DEMO ACTIVATION
+--------------------------------------------------------------------------------
+• DEMO / TRIAL LICENSE KEY (Valid up to 50 launches):
+  Key: 7492-8160 (or 74928160)
+  - Allows customer to test the software up to 50 times.
+  - Automatically displays launch counter: "X out of 50 done (Y remaining)".
+  - Blocks access after 50 launches until Master Key is entered.
+
+• MASTER LIFETIME LICENSE KEY (Permanent 1-Time Activation):
+  Key: 9281-6045-38 (or 9281604538)
+  - Permanently unlocks BizDabba for lifetime use.
+  - Once entered, no license key is ever prompted again!
+  - Can be entered either at startup or inside the app via Dashboard "🔑 License".
+
+--------------------------------------------------------------------------------
+   ⚡ BizDabba by Wokdens.com | Quality Software for Growing Businesses
 ================================================================================
 """
     readme_path = os.path.join(target_dir, "README_PEN_DRIVE_QUICKSTART.txt")

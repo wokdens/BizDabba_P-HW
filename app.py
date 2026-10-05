@@ -89,6 +89,34 @@ root.option_add("*Button.padY", 6)
 style = ttk.Style()
 style.configure("TButton", font=("Arial", 13, "bold"), padding=(12, 8))
 
+# =========================
+# LICENSE VERIFICATION
+# =========================
+from license_manager import is_master_activated
+from ui.license_dialog import LicenseVerificationDialog
+
+# Hide main window while verifying license
+root.withdraw()
+
+# If not master-activated, require verification dialog
+if not is_master_activated() and "--bypass-license" not in sys.argv:
+    license_dlg = LicenseVerificationDialog(root, is_startup=True)
+    if not license_dlg.show():
+        # User closed or cancelled without entering valid key
+        try:
+            close_database_on_exit()
+        except Exception:
+            pass
+        if _app_mutex and sys.platform == "win32":
+            try:
+                ctypes.windll.kernel32.CloseHandle(_app_mutex)
+            except Exception:
+                pass
+        root.destroy()
+        sys.exit(0)
+
+# Unhide main window upon successful verification
+root.deiconify()
 app = MainWindow(root)
 
 # Register clean exit handlers

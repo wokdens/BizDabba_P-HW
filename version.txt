@@ -33,7 +33,7 @@ VSVersionInfo(
         StringStruct(u'FileDescription', u'BizDabba PHWP - Paints & Hardware Wholesale & Retail Management'),
         StringStruct(u'FileVersion', u'3.0.0.0'),
         StringStruct(u'InternalName', u'BizDabba_PHWP'),
-        StringStruct(u'LegalCopyright', u'Copyright (C) 2026 Powered by wokdens.com. All rights reserved.'),
+        StringStruct(u'LegalCopyright', u'Copyright (C) 2026 BizDabba by wokdens.com. All rights reserved.'),
         StringStruct(u'OriginalFilename', u'BizDabba_PHWP.exe'),
         StringStruct(u'ProductName', u'BizDabba PHWP by wokdens.com'),
         StringStruct(u'ProductVersion', u'3.0.0.0'),

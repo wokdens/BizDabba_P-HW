@@ -708,7 +708,7 @@ class LedgerUI:
                     pdf.line(40, 45, width - 40, 45)
                     pdf.setFont("Helvetica-Bold", 8)
                     pdf.setFillColorRGB(0.5, 0.5, 0.5)
-                    pdf.drawRightString(width - 40, 32, "⚡ Powered by wokdens.com")
+                    pdf.drawRightString(width - 40, 32, "⚡ BizDabba by Wokdens.com")
 
                     pdf.showPage()
                     y = height - 60
@@ -748,7 +748,7 @@ class LedgerUI:
             pdf.setFillColorRGB(0.4, 0.4, 0.4)
             pdf.drawString(40, 32, "Please verify all transactions and clear outstanding dues promptly.")
             pdf.setFont("Helvetica-Bold", 8)
-            pdf.drawRightString(width - 40, 32, "⚡ Powered by wokdens.com")
+            pdf.drawRightString(width - 40, 32, "⚡ BizDabba by Wokdens.com")
 
 
             pdf.save()
@@ -830,7 +830,7 @@ class LedgerUI:
 
                 raw.extend(ALIGN_CENTER + b'------------------------------------------------\n')
                 raw.extend(b'Please clear overdue balance at earliest.\n')
-                raw.extend(BOLD_ON + b'Powered by wokdens.com\n' + BOLD_OFF)
+                raw.extend(BOLD_ON + b'BizDabba by Wokdens.com\n' + BOLD_OFF)
                 raw.extend(FEED_CUT)
 
                 ok, msg = send_raw_to_printer(t_printer, bytes(raw), doc_name=f"Stmt-{safe_name}")
@@ -926,7 +926,7 @@ class LedgerUI:
             pdf.drawCentredString(width_pt / 2, curr_y, "Please clear overdue balance at earliest.")
             curr_y -= 7
             pdf.setFont("Helvetica-Bold", 6.8)
-            pdf.drawCentredString(width_pt / 2, curr_y, "Powered by wokdens.com")
+            pdf.drawCentredString(width_pt / 2, curr_y, "BizDabba by Wokdens.com")
 
             pdf.save()
 

@@ -146,7 +146,7 @@ class CustomerPopup:
         # Footer Branding
         footer = tk.Label(
             self.window,
-            text="⚡ Powered by wokdens.com",
+            text="⚡ BizDabba by Wokdens.com",
             font=("Arial", 8, "italic"),
             fg="#888888"
         )

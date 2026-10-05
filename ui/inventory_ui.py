@@ -1679,7 +1679,7 @@ class InventoryUI:
 
         tk.Label(
             dialog,
-            text="⚡ Powered by wokdens.com",
+            text="⚡ BizDabba by Wokdens.com",
             font=("Arial", 8, "italic"),
             fg="#888888"
         ).pack(side="bottom", pady=4)

@@ -217,6 +217,26 @@ class DashboardUI:
             padx=4
         )
 
+        from license_manager import is_master_activated
+        if not is_master_activated():
+            self.license_btn = tk.Button(
+                top_btn_frame,
+                text="🔑 License",
+                width=10,
+                height=2,
+                bg="#b45309",
+                fg="white",
+                font=("Arial", 10, "bold"),
+                command=self.open_license_upgrade
+            )
+            self.license_btn.pack(
+                side="left",
+                padx=4
+            )
+        else:
+            self.license_btn = None
+
+
 
 
 
@@ -458,7 +478,7 @@ class DashboardUI:
 
         tk.Label(
             dialog,
-            text="⚡ Powered by wokdens.com",
+            text="⚡ BizDabba by Wokdens.com",
             font=("Arial", 8, "italic"),
             fg="#888888"
         ).pack(side="bottom", pady=4)
@@ -684,14 +704,28 @@ class DashboardUI:
 
         footer = tk.Label(
             dialog,
-            text="⚡ Powered by wokdens.com • Delhi Wholesale & Retail Management",
+            text="⚡ BizDabba by Wokdens.com • Delhi Wholesale & Retail Management",
             font=("Arial", 8, "italic"),
             fg="#888888"
         )
         footer.pack(side="bottom", pady=4)
 
+    # =========================
+    # MASTER LICENSE UPGRADE
+    # =========================
 
-
+    def open_license_upgrade(self):
+        """Allows activating Master License Key directly from the Dashboard."""
+        try:
+            from ui.license_dialog import prompt_master_license_upgrade
+            def on_success():
+                if hasattr(self, "license_btn") and self.license_btn:
+                    self.license_btn.pack_forget()
+                if self.app and hasattr(self.app, "update_license_ui"):
+                    self.app.update_license_ui()
+            prompt_master_license_upgrade(self.frame, on_success_callback=on_success)
+        except Exception as e:
+            print(f"Dashboard license upgrade notice: {e}")
 
     # =========================
     # RESTORE DATABASE
@@ -1051,7 +1085,7 @@ class DashboardUI:
                 pdf.setFont("Helvetica-Bold", 8)
                 pdf.setFillColorRGB(0.5, 0.5, 0.5)
                 pdf.drawString(40, 32, "Confidential - Business Management Daily Audit")
-                pdf.drawRightString(width - 40, 32, "⚡ Powered by wokdens.com")
+                pdf.drawRightString(width - 40, 32, "⚡ BizDabba by Wokdens.com")
 
                 pdf.save()
 
@@ -1089,7 +1123,7 @@ class DashboardUI:
         # Footer Branding
         tk.Label(
             dialog,
-            text="⚡ Powered by wokdens.com",
+            text="⚡ BizDabba by Wokdens.com",
             font=("Arial", 8, "italic"),
             fg="#888888"
         ).pack(side="bottom", pady=4)
