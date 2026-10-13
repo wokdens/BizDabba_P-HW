@@ -34,7 +34,7 @@ class LicenseVerificationDialog:
         # Bring to front and grab focus
         self.window.lift()
         self.window.attributes("-topmost", True)
-        self.window.after(100, lambda: self.window.attributes("-topmost", False))
+        self.window.focus_force()
         self.window.protocol("WM_DELETE_WINDOW", self.on_cancel)
 
         # Center on screen
@@ -196,6 +196,8 @@ class LicenseVerificationDialog:
         footer_lbl.pack(side="bottom", pady=8)
 
         self.key_entry.focus_set()
+        self.key_entry.focus_force()
+        self.window.lift()
 
     def on_verify(self):
         self.error_lbl.config(text="")

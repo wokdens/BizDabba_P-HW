@@ -18,9 +18,10 @@ def get_pen_drive_dir():
     for d in string.ascii_uppercase:
         if d == 'C':
             continue
-        candidate = f"{d}:\\BizDabba PHWP"
-        if os.path.isdir(candidate):
-            return candidate
+        for folder_name in ["BizDabba for Paint & Hardware", "BizDabba PHWP"]:
+            candidate = f"{d}:\\{folder_name}"
+            if os.path.isdir(candidate):
+                return candidate
     return None
 
 # Handle both development and PyInstaller bundle environments
@@ -59,7 +60,7 @@ SHOP_PHONE = "+91-9811234567"
 SHOP_ADDRESS = "Shop No. 14, Hauz Qazi / Chawri Bazar, Delhi - 110006"
 
 # Application Branding
-APP_TITLE = "BizDabba PHWP by wokdens.com"
+APP_TITLE = "BizDabba for Paint & Hardware by wokdens.com"
 APP_SUBTITLE = "Paints & Hardware Wholesale & Retail Management"
 
 # Master Password for Exported CSV & Data Archives

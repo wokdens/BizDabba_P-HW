@@ -46,6 +46,10 @@ def enforce_single_instance(app_title=APP_TITLE):
             if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
                 user32 = ctypes.windll.user32
                 hwnd = user32.FindWindowW(None, app_title)
+                if not hwnd:
+                    hwnd = user32.FindWindowW(None, "BizDabba - Software License Verification")
+                if not hwnd:
+                    hwnd = user32.FindWindowW(None, "BizDabba PHWP by wokdens.com")
                 if hwnd:
                     user32.ShowWindow(hwnd, 9)  # SW_RESTORE
                     user32.SetForegroundWindow(hwnd)
@@ -117,6 +121,8 @@ if not is_master_activated() and "--bypass-license" not in sys.argv:
 
 # Unhide main window upon successful verification
 root.deiconify()
+root.lift()
+root.focus_force()
 app = MainWindow(root)
 
 # Register clean exit handlers
