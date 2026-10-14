@@ -25,8 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 2. Install Python dependencies
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt reportlab pillow pypdfium2
+COPY cloud_demo/requirements-linux.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # 3. Copy application source code
 COPY . /app

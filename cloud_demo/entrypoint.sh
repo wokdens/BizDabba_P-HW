@@ -25,12 +25,12 @@ if [ ! -f /app/database/business.db ]; then
     fi
 fi
 
-# Pre-activate Demo License with 50 launches for frictionless instant online tryout
+# Pre-activate Master License for frictionless instant online tryout
 python3 -c "
-from license_manager import activate_license
+from license_manager import activate_master_license
 try:
-    activate_license('7492-8160')
-    print('Demo license 7492-8160 successfully activated for cloud demo!')
+    ok, msg = activate_master_license('9281-6045-38')
+    print('Master license setup:', msg)
 except Exception as e:
     print('License init note:', e)
 " || true
