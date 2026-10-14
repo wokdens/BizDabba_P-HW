@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: bizdabba-live-demo
+    runtime: docker
+    dockerfilePath: cloud_demo/Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: RESOLUTION
+        value: 1280x800x24
